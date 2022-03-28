@@ -70,7 +70,7 @@ class Stream:
 class BaseServer(abc.ABC):
     @property
     @abc.abstractmethod
-    def handler(self):
+    def handler(self) -> typing.Callable[[Stream], typing.Awaitable[None]]:
         pass
 
 
