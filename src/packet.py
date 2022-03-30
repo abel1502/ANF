@@ -222,6 +222,7 @@ class UIntPacket(StructPacket):
     def __repr__(self):
         return f"I{self.size()}({self.value!r})"
 
+
 UInt8Packet = UIntPacket[8]
 UInt16Packet = UIntPacket[16]
 UInt32Packet = UIntPacket[32]
@@ -729,3 +730,6 @@ class DynamicBytesPacket(BaseHeaderPacket):
         _replace_method(packet_type, "__init__", __init__)
 
         return packet_type
+
+
+# TODO: Same for BasicArrayPacket and DynamicArrayPacket...?
