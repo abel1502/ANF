@@ -14,19 +14,18 @@ async def test_example_com():
         print(resp.decode())
 
 
-StringPacket = DynamicBytesPacket.create_simple("B", name="StringPacket")
-Uint32Packet = StructPacket.create("I:value", name="Uint32Packet", attr_access=True)
+StringPacket = DynamicBytesPacket.create_simple(1, name="StringPacket")
 
 
 class CmdPacket(CompoundPacket):
     members = CompoundPacket.parse_definition(
-        (Uint32Packet, "cmd"),
+        (UInt64Packet, "cmd"),
         (StringPacket, "arg")
     )
 
     @property
     def cmd(self) -> int:
-        return typing.cast(Uint32Packet, self.member("cmd")).value
+        return typing.cast(UInt64Packet, self.member("cmd")).value
 
     @cmd.setter
     def cmd(self, value: int):
@@ -53,7 +52,7 @@ class CmdPacket(CompoundPacket):
     def __init__(self, *args):
         match args:
             case []:
-                super().__init__(Uint32Packet(), StringPacket())
+                super().__init__(UInt64Packet(), StringPacket())
                 return
             case [int()]:
                 cmd = args[0]
@@ -67,7 +66,7 @@ class CmdPacket(CompoundPacket):
             case _:
                 assert False, "Wrong argument types"
 
-        super().__init__(Uint32Packet(cmd), StringPacket(arg))
+        super().__init__(UInt64Packet(cmd), StringPacket(arg))
 
 
 class Server(BaseServer):
