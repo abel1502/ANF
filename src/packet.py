@@ -2,6 +2,9 @@ import asyncio
 import abc
 import typing
 import struct
+import functools
+import itertools
+import types
 
 from stream import *
 
@@ -59,17 +62,36 @@ class StructPacket(IPacket):
     def __getitem__(self, idx: int | str):
         return self.field(idx)
 
-    def field(self, idx: int | str) -> typing.Any:
-        if isinstance(idx, str):
-            idx = self.field_names.index(idx)
-
-        return self._data[idx]
+    def __setitem__(self, idx: int | str, value):
+        return self.set_field(idx, value)
 
     def __getattr__(self, name: str):
         if not self.attr_access or name not in self.field_names:
             raise AttributeError()
 
         return self.field(name)
+
+    def __setattr__(self, name: str, value):
+        if self.attr_access and name in self.field_names:
+            self.set_field(name, value)
+            return
+
+        super().__setattr__(name, value)
+
+    def __dir__(self) -> typing.Iterable[str]:
+        return itertools.chain(super().__dir__(), self.field_names)
+
+    def field(self, idx: int | str) -> typing.Any:
+        if isinstance(idx, str):
+            idx = self.field_names.index(idx)
+
+        return self._data[idx]
+
+    def set_field(self, idx: int | str, value: typing.Any) -> None:
+        if isinstance(idx, str):
+            idx = self.field_names.index(idx)
+
+        self._data[idx] = value
 
     def is_set(self) -> bool:
         return all(map(lambda x: x is not None, self._data))
@@ -144,11 +166,11 @@ class StructPacket(IPacket):
 
         struct_layout, field_names = StructPacket.parse_definition(*args, order=order)
 
-        return typing.cast(typing.Type["StructPacket"], type(name, (StructPacket,), {
+        return type(StructPacket)(name, (StructPacket,), {
             "struct_layout": struct_layout,
             "field_names": field_names,
             "attr_access": attr_access
-        }))
+        })
 
     def __repr__(self):
         data_repr = []
@@ -159,6 +181,89 @@ class StructPacket(IPacket):
         data_repr = ", ".join(data_repr)
 
         return f"{type(self).__name__}({data_repr})"
+
+
+class UIntPacket(StructPacket):
+    @staticmethod
+    @functools.lru_cache(4)  # The number of possible sizes
+    def __class_getitem__(bits: int):
+        match bits:
+            case 8:
+                struct_layout = "B"
+            case 16:
+                struct_layout = "H"
+            case 32:
+                struct_layout = "I"
+            case 64:
+                struct_layout = "Q"
+            case _:
+                assert False, f"Unsupported integer (bit) size: {bits}"
+
+        struct_layout = struct.Struct(struct_layout)
+
+        return type(f"UInt{bits}Packet", (UIntPacket,), {
+            "struct_layout": struct_layout
+        })
+
+    field_names = ("value",)
+    attr_access = False
+
+    def __init__(self, value: int | None = None):
+        super().__init__(value)
+
+    @property
+    def value(self) -> int:
+        return self.field(0)
+
+    @value.setter
+    def value(self, value: int) -> None:
+        self.set_field(0, value)
+
+    def __repr__(self):
+        return f"I{self.size()}({self.value!r})"
+
+UInt8Packet = UIntPacket[8]
+UInt16Packet = UIntPacket[16]
+UInt32Packet = UIntPacket[32]
+UInt64Packet = UIntPacket[64]
+
+
+class BytesPacket(StructPacket):
+    @staticmethod
+    @functools.lru_cache()
+    def __class_getitem__(size: int):
+        struct_layout = f"{size}s"
+
+        struct_layout = struct.Struct(struct_layout)
+
+        return type(f"Bytes{size}Packet", (BytesPacket,), {
+            "struct_layout": struct_layout
+        })
+
+    field_names = ("value",)
+    attr_access = False
+
+    def __init__(self, value: bytes | None = None):
+        super().__init__(value)
+
+    @property
+    def raw(self) -> bytes:
+        return self.field(0)
+
+    @raw.setter
+    def raw(self, value: bytes) -> None:
+        self.set_field(0, value)
+
+    @property
+    def string(self) -> str:
+        return self.raw.rstrip(b'\0').decode()
+
+    @string.setter
+    def string(self, value: str) -> None:
+        self.raw = value.encode()
+
+    def __repr__(self):
+        return f"B{self.size()}({self.str!r})"
 
 
 class CompoundPacket(IPacket):
@@ -219,17 +324,36 @@ class CompoundPacket(IPacket):
     def __getitem__(self, idx: int | str):
         return self.member(idx)
 
-    def member(self, idx: int | str) -> IPacket:
-        if isinstance(idx, str):
-            idx = list(self._member_names()).index(idx)
-
-        return self._data[idx]
+    def __setitem__(self, idx: int | str, value):
+        return self.set_member(idx, value)
 
     def __getattr__(self, name: str):
         if not self.attr_access or name not in self._member_names():
             raise AttributeError()
 
         return self.member(name)
+
+    def __setattr__(self, name: str, value):
+        if self.attr_access and name in self.field_names:
+            self.set_member(name, value)
+            return
+
+        super().__setattr__(name, value)
+
+    def __dir__(self) -> typing.Iterable[str]:
+        return itertools.chain(super().__dir__(), self._member_names())
+
+    def member(self, idx: int | str) -> IPacket:
+        if isinstance(idx, str):
+            idx = list(self._member_names()).index(idx)
+
+        return self._data[idx]
+
+    def set_member(self, idx: int | str, value: IPacket) -> None:
+        if isinstance(idx, str):
+            idx = list(self._member_names()).index(idx)
+
+        self._data[idx] = value
 
     @classmethod
     def __len__(cls) -> int:
@@ -285,10 +409,10 @@ class CompoundPacket(IPacket):
 
         members = CompoundPacket.parse_definition(*args)
 
-        return typing.cast(typing.Type["CompoundPacket"], type(name, (CompoundPacket,), {
+        return type(CompoundPacket)(name, (CompoundPacket,), {
             "members": members,
             "attr_access": attr_access
-        }))
+        })
 
     def __repr__(self):
         data_repr = []
@@ -376,16 +500,16 @@ class BaseHeaderPacket(IPacket):
         await self.on_decode()
         await self.content.decode(stream)
 
-    @staticmethod
-    def make_struct_header(header_struct_spec: str,
-                           name: str = None,
-                           order: str = "<",
-                           attr_access: bool = None) -> typing.Type["StructPacket"]:
-        name = f"{name}_header" if name is not None else None
-        return StructPacket.create(f"{header_struct_spec}:value",
-                                   order=order,
-                                   name=name,
-                                   attr_access=attr_access)
+    # @staticmethod
+    # def make_struct_header(header_struct_spec: str,
+    #                        name: str = None,
+    #                        order: str = "<",
+    #                        attr_access: bool = None) -> typing.Type["StructPacket"]:
+    #     name = f"{name}_header" if name is not None else None
+    #     return StructPacket.create(f"{header_struct_spec}:value",
+    #                                order=order,
+    #                                name=name,
+    #                                attr_access=attr_access)
 
     def __repr__(self):
         return f"{type(self).__name__}(header={self.header!r}, content={self.content!r})"
@@ -433,32 +557,29 @@ class DiscriminatedPacket(BaseHeaderPacket):
     def create(header_type: typing.Type[IPacket],
                content_types: typing.Mapping[int, typing.Type[IPacket]],
                get_id: typing.Callable[[typing.Any], int],
-               name: str = None) -> typing.Type["DiscriminatedPacket"]:
+               name: str | None = None) -> typing.Type["DiscriminatedPacket"]:
         if name is None:
             name = "CustomDiscriminatedPacket"
 
-        return typing.cast(typing.Type["DiscriminatedPacket"], type(name, (DiscriminatedPacket,), {
+        return type(DiscriminatedPacket)(name, (DiscriminatedPacket,), {
             "header_type": header_type,
             "content_types": content_types,
             "get_id": get_id
-        }))
+        })
 
     @staticmethod
-    def create_simple(header_struct_spec: str,
+    def create_simple(header_bytes_size: int,
                       content_types: typing.Mapping[int, typing.Type[IPacket]],
-                      **kwargs) -> typing.Type["DiscriminatedPacket"]:
-        assert header_struct_spec.replace("x", "") in "BHILQN", \
-            "header_struct_spec must be a struct format for a single integer with optional padding"
-
-        header_type = DiscriminatedPacket.make_struct_header(header_struct_spec, **kwargs,
-                                                             attr_access=True)
-        packet_type = DiscriminatedPacket.create(header_type, content_types, lambda self: self.header.value)
+                      name: str | None = None) -> typing.Type["DiscriminatedPacket"]:
+        header_type = UIntPacket[header_bytes_size * 8]
+        packet_type = DiscriminatedPacket.create(header_type, content_types,
+                                                 lambda self: self.header.value, name=name)
 
         def __init__(old_init, self, *args):
             args = list(args)
 
             if len(args) == 2 and isinstance(args[0], int):
-                args[0] = self.header_type(value=args[0])
+                args[0] = self.header_type(args[0])
 
             old_init(self, *args)
 
@@ -528,7 +649,7 @@ class BasicBytesPacket(IPacket):
         self._expected_size = None
 
     def __repr__(self):
-        return f"BasicBytesPacket(data={self.data!r})"
+        return f"Bytes({self.data!r})"
 
 
 class DynamicBytesPacket(BaseHeaderPacket):
@@ -568,14 +689,14 @@ class DynamicBytesPacket(BaseHeaderPacket):
     @staticmethod
     def create(header_type: typing.Type[IPacket],
                get_size: typing.Callable[[typing.Any], int],
-               name: str = None) -> typing.Type["DynamicBytesPacket"]:
+               name: str | None = None) -> typing.Type["DynamicBytesPacket"]:
         if name is None:
             name = "CustomDynamicBytesPacket"
 
-        packet_type = typing.cast(typing.Type["DynamicBytesPacket"], type(name, (DynamicBytesPacket,), {
+        packet_type = type(DynamicBytesPacket)(name, (DynamicBytesPacket,), {
             "header_type": header_type,
             "get_size": get_size
-        }))
+        })
 
         def __init__(old_init, self, *args):
             args = list(args)
@@ -590,14 +711,10 @@ class DynamicBytesPacket(BaseHeaderPacket):
         return packet_type
 
     @staticmethod
-    def create_simple(header_struct_spec: str,
-                      **kwargs) -> typing.Type["DynamicBytesPacket"]:
-        assert header_struct_spec.replace("x", "") in "BHILQN", \
-            "header_struct_spec must be a struct format for a single integer with optional padding"
-
-        header_type = DynamicBytesPacket.make_struct_header(header_struct_spec, **kwargs,
-                                                            attr_access=True)
-        packet_type = DynamicBytesPacket.create(header_type, lambda self: self.header.value)
+    def create_simple(header_bytes_size: int,
+                      name: str | None = None) -> typing.Type["DynamicBytesPacket"]:
+        header_type = UIntPacket[header_bytes_size * 8]
+        packet_type = DynamicBytesPacket.create(header_type, lambda self: self.header.value, name=name)
 
         def __init__(old_init, self, *args):
             args = list(args)
