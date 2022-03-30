@@ -14,13 +14,60 @@ async def test_example_com():
         print(resp.decode())
 
 
-CmdPacket = StructPacket.create(
-    "I:cmd",
-    "28s:arg",
-    name="CmdPacket",
-    attr_access=True
-)
-assert CmdPacket.size() == 32
+StringPacket = DynamicBytesPacket.create_simple("B", name="StringPacket")
+Uint32Packet = StructPacket.create("I:value", name="Uint32Packet", attr_access=True)
+
+
+class CmdPacket(CompoundPacket):
+    members = CompoundPacket.parse_definition(
+        (Uint32Packet, "cmd"),
+        (StringPacket, "arg")
+    )
+
+    @property
+    def cmd(self) -> int:
+        return typing.cast(Uint32Packet, self.member("cmd")).value
+
+    @cmd.setter
+    def cmd(self, value: int):
+        self.member("cmd").value = value
+
+    @property
+    def arg(self) -> str:
+        return typing.cast(StringPacket, self.member("arg")).data.decode()
+
+    @arg.setter
+    def arg(self, value: str | bytes):
+        if isinstance(value, str):
+            value = value.encode()
+        typing.cast(StringPacket, self.member("arg")).data = value
+
+    @typing.overload
+    def __init__(self):
+        pass
+
+    @typing.overload
+    def __init__(self, cmd: int, arg: str | bytes = ""):
+        pass
+
+    def __init__(self, *args):
+        match args:
+            case []:
+                super().__init__(Uint32Packet(), StringPacket())
+                return
+            case [int()]:
+                cmd = args[0]
+                arg = ""
+            case [int(), str()]:
+                cmd = args[0]
+                arg = args[1].encode()
+            case [int(), bytes()]:
+                cmd = args[0]
+                arg = args[1]
+            case _:
+                assert False, "Wrong argument types"
+
+        super().__init__(Uint32Packet(cmd), StringPacket(arg))
 
 
 class Server(BaseServer):
@@ -50,12 +97,12 @@ class Server(BaseServer):
 
                     match packet.cmd:
                         case 0:
-                            await CmdPacket(cmd=0, arg=packet.arg).encode(stream)
+                            await CmdPacket(0, packet.arg).encode(stream)
                         case 1:
-                            await CmdPacket(cmd=0, arg=b"Bye!").encode(stream)
+                            await CmdPacket(0, "Bye!").encode(stream)
                             break
                         case 2:
-                            await CmdPacket(cmd=0, arg=b"Stopping...").encode(stream)
+                            await CmdPacket(0, "Stopping...").encode(stream)
                             self.server.close()
                             await self.server.wait_closed()
                             return
@@ -100,7 +147,7 @@ async def run_client():
 
         TwoCmdPackets = CompoundPacket.create(CmdPacket, CmdPacket, name="TwoCmdPackets")
 
-        data = TwoCmdPackets(CmdPacket(cmd=0, arg=b"Hi!"), CmdPacket(cmd=2, arg=b"..."))
+        data = TwoCmdPackets(CmdPacket(0, "Hi!"), CmdPacket(2, "..."))
         print(">", data)
         await data.encode(stream)
 
