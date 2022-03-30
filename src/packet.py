@@ -387,6 +387,14 @@ class BaseHeaderPacket(IPacket):
         return f"{type(self).__name__}(header={self.header!r}, content={self.content!r})"
 
 
+def _replace_method(cls: typing.Type, name: str, new_method: typing.Callable):
+    old_method = getattr(cls, name)
+
+    setattr(cls, name, lambda self, *args, **kwargs: new_method(old_method, self, *args, **kwargs))
+
+    return cls
+
+
 class DiscriminatedPacket(BaseHeaderPacket):
     content_types: (typing.Mapping[int, typing.Type[IPacket]] | None) = None
 
@@ -438,56 +446,165 @@ class DiscriminatedPacket(BaseHeaderPacket):
         assert header_struct_spec.replace("x", "") in "BHILQN", \
             "header_struct_spec must be a struct format for a single integer with optional padding"
 
-        # TODO: An __init__ from size as int
-        header_type = DiscriminatedPacket.make_struct_header(header_struct_spec, **kwargs)
+        header_type = DiscriminatedPacket.make_struct_header(header_struct_spec, **kwargs,
+                                                             attr_access=True)
+        packet_type = DiscriminatedPacket.create(header_type, content_types, lambda self: self.header.value)
 
-        return DiscriminatedPacket.create(header_type, content_types, lambda self: self.header.value)
+        def __init__(old_init, self, *args):
+            args = list(args)
+
+            if len(args) == 2 and isinstance(args[0], int):
+                args[0] = self.header_type(value=args[0])
+
+            old_init(self, *args)
+
+        _replace_method(packet_type, "__init__", __init__)
+
+        return packet_type
 
 
-# TODO: Finish. Might require either changing the BaseHeaderPacket, or adding a helper packet that would simply send
-#       bytes without any knowledge of its size. (Or, rather, expecting something like set_size before decode).
-#       Also should add a constructor that would take bytes explicitly
-# class DynamicBytesPacket(BaseHeaderPacket):
-#     @abc.abstractmethod
-#     def get_size(self) -> int:
-#         pass
-#
-#     def validate(self) -> bool:
-#         if not self.header.is_set():
-#             return True
-#
-#         return isinstance(self.header, self.header_type) and \
-#                isinstance(self.content, IPacket)
-#
-#     def _create_content_struct(self):
-#         size = self.get_size()
-#         self._content = StructPacket.create(f"{size}s:data", name=f"Bytes{size}", attr_access=True)()
-#
-#     async def on_encode(self) -> None:
-#         pass
-#
-#     async def on_decode(self) -> None:
-#         pass
-#
-#     @staticmethod
-#     def create(header_type: typing.Type[IPacket],
-#                get_size: typing.Callable[[typing.Any], int],
-#                name: str = None) -> typing.Type["DiscriminatedPacket"]:
-#         if name is None:
-#             name = "CustomDiscriminatedPacket"
-#
-#         return typing.cast(typing.Type["DiscriminatedPacket"], type(name, (DiscriminatedPacket,), {
-#             "header_type": header_type,
-#             "get_size": get_id
-#         }))
-#
-#     @staticmethod
-#     def create_simple(header_struct_spec: str,
-#                       content_types: typing.Mapping[int, typing.Type[IPacket]],
-#                       **kwargs) -> typing.Type["DiscriminatedPacket"]:
-#         assert header_struct_spec.replace("x", "") in "BHILQN", \
-#             "header_struct_spec must be a struct format for a single integer with optional padding"
-#
-#         header_type = DiscriminatedPacket.make_struct_header(header_struct_spec, **kwargs)
-#
-#         return DiscriminatedPacket.create(header_type, content_types, lambda self: self.header.value)
+class BasicBytesPacket(IPacket):
+    """
+    A very basic packet class that transmits and receives a dynamically specified number of bytes. Chances are, you
+    don't want to use it directly. Try DynamicBytesPacket instead
+    """
+
+    @typing.overload
+    def __init__(self):
+        ...
+
+    @typing.overload
+    def __init__(self, data: bytes):
+        ...
+
+    @typing.overload
+    def __init__(self, size: int):
+        ...
+
+    def __init__(self, arg=None):
+        self._data: bytes | None
+        self._expected_size: int | None
+
+        self.clear()
+
+        if isinstance(arg, bytes):
+            self._data = arg
+        elif isinstance(arg, int):
+            self._expected_size = arg
+
+    @property
+    def data(self) -> bytes | None:
+        return self._data
+
+    @data.setter
+    def data(self, value: bytes) -> None:
+        assert value is not None
+        self._data = value
+
+    def expect_size(self, size: int):
+        assert size is not None
+        self._expected_size = size
+
+    def clear(self) -> None:
+        self._data = None
+        self._expected_size = None
+
+    def is_set(self) -> bool:
+        return self.data is not None
+
+    async def encode(self, stream: Stream) -> None:
+        assert self.is_set()
+
+        await stream.send(self.data)
+
+    async def decode(self, stream: Stream) -> None:
+        assert self._expected_size is not None, "You must always call `expect_size()` before `decode()`"
+
+        self._data = await stream.recv(self._expected_size)
+        self._expected_size = None
+
+    def __repr__(self):
+        return f"BasicBytesPacket(data={self.data!r})"
+
+
+class DynamicBytesPacket(BaseHeaderPacket):
+    """
+    A wrapper around BasicBytesPacket (which is transmitted as `content`) that also includes a header to transmit the
+    data's length
+    """
+
+    @abc.abstractmethod
+    def get_size(self) -> int:
+        pass
+
+    def _get_content(self) -> BasicBytesPacket:
+        return typing.cast(BasicBytesPacket, self.content)
+
+    def validate(self) -> bool:
+        if not self.header.is_set():
+            return True
+
+        return isinstance(self.header, self.header_type) and \
+            isinstance(self.content, BasicBytesPacket)
+
+    @property
+    def data(self) -> bytes | None:
+        return self._get_content().data
+
+    @data.setter
+    def data(self, value: bytes) -> None:
+        self._get_content().data = value
+
+    async def on_encode(self) -> None:
+        pass
+
+    async def on_decode(self) -> None:
+        self._content = BasicBytesPacket(self.get_size())
+
+    @staticmethod
+    def create(header_type: typing.Type[IPacket],
+               get_size: typing.Callable[[typing.Any], int],
+               name: str = None) -> typing.Type["DynamicBytesPacket"]:
+        if name is None:
+            name = "CustomDynamicBytesPacket"
+
+        packet_type = typing.cast(typing.Type["DynamicBytesPacket"], type(name, (DynamicBytesPacket,), {
+            "header_type": header_type,
+            "get_size": get_size
+        }))
+
+        def __init__(old_init, self, *args):
+            args = list(args)
+
+            if len(args) == 2 and isinstance(args[1], bytes):
+                args[1] = BasicBytesPacket(args[1])
+
+            old_init(self, *args)
+
+        _replace_method(packet_type, "__init__", __init__)
+
+        return packet_type
+
+    @staticmethod
+    def create_simple(header_struct_spec: str,
+                      **kwargs) -> typing.Type["DynamicBytesPacket"]:
+        assert header_struct_spec.replace("x", "") in "BHILQN", \
+            "header_struct_spec must be a struct format for a single integer with optional padding"
+
+        header_type = DynamicBytesPacket.make_struct_header(header_struct_spec, **kwargs,
+                                                            attr_access=True)
+        packet_type = DynamicBytesPacket.create(header_type, lambda self: self.header.value)
+
+        def __init__(old_init, self, *args):
+            args = list(args)
+
+            if len(args) == 2 and isinstance(args[0], int):
+                args[0] = self.header_type(args[0])
+            elif len(args) == 1 and isinstance(args[0], bytes):
+                args = [self.header_type(len(args[0])), args[0]]
+
+            old_init(self, *args)
+
+        _replace_method(packet_type, "__init__", __init__)
+
+        return packet_type
