@@ -19,7 +19,7 @@ class IPacket(abc.ABC):
     """
 
     @abc.abstractmethod
-    async def clear(self) -> None:
+    def clear(self) -> None:
         pass
 
     @abc.abstractmethod
@@ -221,7 +221,7 @@ class CompoundPacket(IPacket):
 
     def member(self, idx: int | str) -> IPacket:
         if isinstance(idx, str):
-            idx = self.field_names.index(idx)
+            idx = list(self._member_names()).index(idx)
 
         return self._data[idx]
 
@@ -272,7 +272,11 @@ class CompoundPacket(IPacket):
         return tuple(members)
 
     @staticmethod
-    def create(*args, name: str = None, attr_access: bool = None) -> typing.Type["CompoundPacket"]:
+    def create(*args: "CompoundPacket.Member" |
+                      typing.Tuple[typing.Type[IPacket], str] |
+                      typing.Type[IPacket],
+                      name: str = None,
+                      attr_access: bool = None) -> typing.Type["CompoundPacket"]:
         if name is None:
             name = "CustomCompoundPacket"
 
@@ -374,10 +378,10 @@ class BaseHeaderPacket(IPacket):
 
     @staticmethod
     def make_struct_header(header_struct_spec: str,
-                           master_name: str = None,
+                           name: str = None,
                            order: str = "<",
                            attr_access: bool = None) -> typing.Type["StructPacket"]:
-        name = f"{master_name}_header" if master_name is not None else None
+        name = f"{name}_header" if name is not None else None
         return StructPacket.create(f"{header_struct_spec}:value",
                                    order=order,
                                    name=name,
