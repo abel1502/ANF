@@ -43,6 +43,8 @@ class StructPacket(IPacket):
     field_names: (typing.Tuple[str, ...] | None) = None
     attr_access: bool = False
 
+    DEFAULT_ORDER: str = "!"
+
     def __init__(self, *args, **kwargs):
         assert self.struct_layout is not None
         assert self.field_names is not None
@@ -123,7 +125,7 @@ class StructPacket(IPacket):
             raise PacketDecodeError from e
 
     @staticmethod
-    def parse_definition(*args: str, order="<") -> typing.Tuple[struct.Struct, typing.Tuple[typing.Any, ...]]:
+    def parse_definition(*args: str, order=DEFAULT_ORDER) -> typing.Tuple[struct.Struct, typing.Tuple[typing.Any, ...]]:
         """
         Parses a structure definition in a convenient format.
 
@@ -153,7 +155,7 @@ class StructPacket(IPacket):
         return struct_layout, field_names
 
     @staticmethod
-    def create(*args: str, order="<", name=None, attr_access: bool = None) -> typing.Type["StructPacket"]:
+    def create(*args: str, order=DEFAULT_ORDER, name=None, attr_access: bool = None) -> typing.Type["StructPacket"]:
         """
         Creates a new subclass for a given struct
         """
@@ -504,7 +506,7 @@ class BaseHeaderPacket(IPacket):
     # @staticmethod
     # def make_struct_header(header_struct_spec: str,
     #                        name: str = None,
-    #                        order: str = "<",
+    #                        order: str = DEFAULT_ORDER,
     #                        attr_access: bool = None) -> typing.Type["StructPacket"]:
     #     name = f"{name}_header" if name is not None else None
     #     return StructPacket.create(f"{header_struct_spec}:value",

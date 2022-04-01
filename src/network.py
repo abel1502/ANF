@@ -27,16 +27,12 @@ class BaseServer(abc.ABC):
     def wait_closed(self) -> typing.Awaitable[None]:
         return self.server_impl.wait_closed()
 
-    async def run(self, port: int, host: (str | None) = None, background=False, **kwargs):
+    async def run(self, port: int, host: (str | None) = None, **kwargs):
         self.log("Starting...")
         self._server = await asyncio.start_server(self._callback, host, port, **kwargs)
 
         self.log("Awaiting connections")
         serve_forever = self.server_impl.serve_forever()
-
-        if background:
-            asyncio.create_task(serve_forever)
-            return
 
         try:
             await serve_forever
@@ -84,3 +80,5 @@ class BaseServer(abc.ABC):
         msg = self.format_log_msg(msg)
         print(msg)
 
+
+__all__ = ("Stream", "connect", "BaseServerHandler", "BaseServer")
