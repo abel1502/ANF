@@ -6,7 +6,7 @@ import functools
 import itertools
 import types
 
-from stream import *
+from .stream import *
 
 
 class PacketDecodeError(Exception):

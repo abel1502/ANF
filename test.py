@@ -1,5 +1,5 @@
-from network import *
-from packet import *
+from anf.network import *
+from anf.packet import *
 
 
 async def test_example_com():

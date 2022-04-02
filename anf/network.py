@@ -3,7 +3,7 @@ import abc
 import datetime
 import typing
 
-from stream import *
+from .stream import *
 
 
 async def connect(host: str, port: int, **kwargs) -> Stream:
