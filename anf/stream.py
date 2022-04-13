@@ -151,30 +151,49 @@ class SyncStream(IStream, typing.Generic[T]):
         data = bytearray(data)
 
         while data:
-            written = self._repeat_while_blocking(lambda: self.wrapped_stream.write(data))
+            written = await self._repeat_while_blocking(lambda: self.wrapped_stream.write(data))
+            assert written > 0
             data[:written] = b''
+
+        self.wrapped_stream.flush()
 
     async def send(self, data: bytes) -> None:
         try:
             await self._send(data)
-        except (ConnectionError, OSError) as e:
+        except (OSError,) as e:
             raise StreamWriteError from e
+
+    @staticmethod
+    def _check_eof(data: bytes) -> bytes:
+        assert isinstance(data, bytes)
+
+        if not data:
+            raise StreamReadError("EOF was hit")
+
+        return data
 
     async def _recv(self, size: int | None = None, exactly: bool = True) -> bytes:
         if size is None:
-            return await self._repeat_while_blocking(lambda: self.wrapped_stream.read())
+            size = -1
+            exactly = False
         if not exactly:
-            return await self._repeat_while_blocking(lambda: self.wrapped_stream.read(size))
+            return self._check_eof(
+                await self._repeat_while_blocking(
+                    lambda: self.wrapped_stream.read(size)
+                )
+            )
 
         data = bytearray()
         while size:
-            data += await self._repeat_while_blocking(lambda: self.wrapped_stream.read(size))
+            data += self._check_eof(
+                await self._repeat_while_blocking(lambda: self.wrapped_stream.read(size))
+            )
         return bytes(data)
 
     async def recv(self, size: int | None = None, *, exactly: bool = True) -> bytes:
         try:
             return await self._recv(size, exactly=exactly)
-        except (ConnectionError, OSError) as e:
+        except (OSError,) as e:
             raise StreamReadError from e
 
     async def recv_until(self, until: bytes) -> bytes:
