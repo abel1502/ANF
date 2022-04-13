@@ -4,10 +4,14 @@ import datetime
 import typing
 
 from .stream import *
+from .errors import *
 
 
 async def connect(host: str, port: int, **kwargs) -> Stream:
-    return Stream(await asyncio.open_connection(host, port, **kwargs))
+    try:
+        return Stream(await asyncio.open_connection(host, port, **kwargs))
+    except ConnectionError as e:
+        raise StreamOpenError from e
 
 
 class BaseServerHandler(abc.ABC):
@@ -15,7 +19,7 @@ class BaseServerHandler(abc.ABC):
         self.server = server
 
     @abc.abstractmethod
-    async def handle(self, stream: Stream) -> None:
+    async def handle(self, stream: IStream) -> None:
         pass
 
 
@@ -37,6 +41,8 @@ class BaseServer(abc.ABC):
         try:
             await serve_forever
             await self.wait_closed()
+        except ConnectionError as e:  # TODO: Might be unnecessary
+            raise StreamOpenError from e
         except asyncio.CancelledError:
             pass
         self.log("Done.")
@@ -81,4 +87,4 @@ class BaseServer(abc.ABC):
         print(msg)
 
 
-__all__ = ("Stream", "connect", "BaseServerHandler", "BaseServer")
+__all__ = ("connect", "BaseServerHandler", "BaseServer")
