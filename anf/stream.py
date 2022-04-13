@@ -23,7 +23,7 @@ class IStream(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def recv(self, size: int = -1, exactly: bool = True) -> bytes:
+    async def recv(self, size: int = -1, *, exactly: bool = True) -> bytes:
         """
         :raises StreamWriteError:
         """
@@ -83,7 +83,7 @@ class Stream(IStream):
         except (ConnectionError,) as e:
             raise StreamWriteError from e
 
-    async def recv(self, size: int | None = None, exactly: bool = True) -> bytes:
+    async def recv(self, size: int | None = None, *, exactly: bool = True) -> bytes:
         try:
             if size is None:
                 read = self.reader.read()
@@ -113,15 +113,9 @@ class Stream(IStream):
         except (ConnectionError, asyncio.IncompleteReadError) as e:
             raise StreamReadError from e
 
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        self.close()
-        await self.wait_closed()
-
 
 T = typing.TypeVar("T", bound=typing.BinaryIO)
+U = typing.TypeVar("U")
 
 
 class SyncStream(IStream, typing.Generic[T]):
@@ -133,6 +127,64 @@ class SyncStream(IStream, typing.Generic[T]):
     @property
     def wrapped_stream(self) -> T:
         return self._wrapped_stream
+
+    def close(self):
+        self._wrapped_stream.close()
+
+    async def wait_closed(self):
+        pass
+
+    @staticmethod
+    async def _repeat_while_blocking(action: typing.Callable[[], U]) -> U:
+        result: U | None = None
+        while result is None:
+            try:
+                result = action()
+            except BlockingIOError:
+                pass
+            await asyncio.sleep(0)
+        assert result is not None
+
+        return result
+
+    async def _send(self, data: bytes) -> None:
+        data = bytearray(data)
+
+        while data:
+            written = self._repeat_while_blocking(lambda: self.wrapped_stream.write(data))
+            data[:written] = b''
+
+    async def send(self, data: bytes) -> None:
+        try:
+            await self._send(data)
+        except (ConnectionError, OSError) as e:
+            raise StreamWriteError from e
+
+    async def _recv(self, size: int | None = None, exactly: bool = True) -> bytes:
+        if size is None:
+            return await self._repeat_while_blocking(lambda: self.wrapped_stream.read())
+        if not exactly:
+            return await self._repeat_while_blocking(lambda: self.wrapped_stream.read(size))
+
+        data = bytearray()
+        while size:
+            data += await self._repeat_while_blocking(lambda: self.wrapped_stream.read(size))
+        return bytes(data)
+
+    async def recv(self, size: int | None = None, *, exactly: bool = True) -> bytes:
+        try:
+            return await self._recv(size, exactly=exactly)
+        except (ConnectionError, OSError) as e:
+            raise StreamReadError from e
+
+    async def recv_until(self, until: bytes) -> bytes:
+        data = bytearray()
+        while not data.endswith(until):
+            data += await self.recv(1, exactly=False)
+        return bytes(data)
+
+    async def recv_line(self) -> bytes:
+        return await self.recv_until(b'\n')
 
     @staticmethod
     @typing.overload
