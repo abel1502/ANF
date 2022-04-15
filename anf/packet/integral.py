@@ -107,12 +107,14 @@ class VarInt(IPacket):
 
     async def _decode(self, stream: IStream, ctx: Context) -> int:
         data = bytearray()
-        num = 0
         seen_end = False
         while not seen_end:
             byte = (await stream.recv(1))[0]
             seen_end = byte & 0x80
             data.append(byte)
+
+        num = 0
+        for byte in reversed(data):
             num = (num << 7) | (byte & 0x7f)
 
         return num
