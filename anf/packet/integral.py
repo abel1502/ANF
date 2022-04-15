@@ -86,8 +86,71 @@ class BytesIntPacket(IPacket[int]):
         return f"{type(self).__name__}(sz={self._size}, signed={self._signed}, order={self._endianness})"
 
 
-# TODO: some VarInts
-# TODO: Incorporate contexts into the interface and here
+class VarInt(IPacket):
+    def __init__(self):
+        pass
+
+    async def _encode(self, stream: IStream, obj: int, ctx: Context) -> None:
+        data = bytearray()
+
+        if obj < 0:
+            raise PacketEncodeError("VarInt cannot encode negative numbers")
+
+        while obj >= 0x80:
+            data.append((obj & 0x7f) | 0x80)
+        assert obj < 0x80
+        data.append(obj)
+
+        data = ctx.register_enc(bytes(data))
+
+        await stream.send(data)
+
+    async def _decode(self, stream: IStream, ctx: Context) -> int:
+        data = bytearray()
+        num = 0
+        seen_end = False
+        while not seen_end:
+            byte = (await stream.recv(1))[0]
+            seen_end = byte & 0x80
+            data.append(byte)
+            num = (num << 7) | (byte & 0x7f)
+
+        return num
+
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}"
+
+
+VarInt = VarInt()
+VarInt.__call__ = lambda self: self
+
+
+class ZigZag(IPacket):
+    def __init__(self):
+        pass
+
+    async def _encode(self, stream: IStream, obj: int, ctx: Context) -> None:
+        obj <<= 1
+        if obj < 0:
+            obj = ~obj
+
+        await VarInt.encode(stream, obj, ctx)
+
+    async def _decode(self, stream: IStream, ctx: Context) -> int:
+        obj = await VarInt.decode(stream, ctx)
+
+        if obj & 1:
+            obj = ~obj
+        obj >>= 1
+
+        return obj
+
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}"
+
+
+ZigZag = ZigZag()
+ZigZag.__call__ = lambda self: self
 
 
 def _create_int_types() -> typing.Dict[str, PyStructPacket]:
@@ -107,6 +170,7 @@ def _create_int_types() -> typing.Dict[str, PyStructPacket]:
 
         integral_type = PyStructPacket(fmt, _endian_to_struct[endian])
         integral_type.__repr__ = lambda self: f"{type(self).__name__}"
+        integral_type.__call__ = lambda self: self
 
         result[name] = integral_type
 
