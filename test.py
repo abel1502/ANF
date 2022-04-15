@@ -1,3 +1,29 @@
+import typing
+import asyncio
+import io
+from anf.packet.integral import *
+from anf.stream import *
+
+
+async def main():
+    packet = UInt32
+    stream = BytesStream()
+    obj = 123
+    await packet.encode(stream, obj)
+    enc = stream.get_data()
+    print(enc.hex())
+    stream.wrapped_stream.seek(0)
+    dec = await packet.decode(stream)
+    print(dec)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+
+
+exit(0)
+
+
 from anf.network import *
 from anf.packet import *
 
