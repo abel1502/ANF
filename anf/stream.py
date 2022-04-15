@@ -184,9 +184,11 @@ class SyncStream(IStream, typing.Generic[T]):
             )
 
         data = bytearray()
-        while size:
+        while len(data) < size:
             data += self._check_eof(
-                await self._repeat_while_blocking(lambda: self.wrapped_stream.read(size))
+                await self._repeat_while_blocking(
+                    lambda: self.wrapped_stream.read(size - len(data))
+                )
             )
         return bytes(data)
 
@@ -204,6 +206,9 @@ class SyncStream(IStream, typing.Generic[T]):
 
     async def recv_line(self) -> bytes:
         return await self.recv_until(b'\n')
+
+    def reset(self) -> None:
+        self.wrapped_stream.seek(0)
 
     @staticmethod
     @typing.overload
@@ -224,7 +229,7 @@ class SyncStream(IStream, typing.Generic[T]):
 
 
 class BytesStream(SyncStream[io.BytesIO]):
-    def __init__(self, initial: bytes):
+    def __init__(self, initial: bytes = b''):
         super().__init__(io.BytesIO(initial))
 
     def get_data(self):
