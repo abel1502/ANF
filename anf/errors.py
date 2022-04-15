@@ -8,6 +8,7 @@ class StreamWriteError(Exception): pass
 
 class PacketEncodeError(Exception): pass
 class PacketDecodeError(Exception): pass
-class NotConstSizeableError(Exception): pass
+class NotSizeableError(Exception): pass
+class PacketInvalidError(Exception): pass
 
 
