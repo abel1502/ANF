@@ -146,9 +146,12 @@ class IPacket(abc.ABC, typing.Generic[T]):
     async def _decode(self, stream: IStream, ctx: Context) -> T:
         pass
 
-    @abc.abstractmethod
+    # @abc.abstractmethod
     def _sizeof(self, ctx: Context) -> int:
-        pass
+        try:
+            return len(ctx.get_self(encoded=True))
+        except KeyError:
+            raise NotSizeableError("Packet wasn't yet encoded, and size cannot be determined")
 
 
 class PacketWrapper(IPacket):
