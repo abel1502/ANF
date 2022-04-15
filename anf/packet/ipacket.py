@@ -25,12 +25,13 @@ class IPacket(abc.ABC, typing.Generic[T]):
     # Public interface #
     ####################
 
-    async def encode(self, stream: IStream, obj: T) -> None:
+    async def encode(self, stream: IStream, obj: T, ctx: Context | None = None) -> None:
         """
         Encodes the packet asynchronously.
 
         :param stream: The asynchronous stream to encode to
         :param obj: The object to encode
+        :param ctx: The current context, if present
 
         :raises StreamWriteError: if writing to the stream fails
         :raises PacketEncodeError: upon errors specific to encoding the packet
@@ -39,13 +40,17 @@ class IPacket(abc.ABC, typing.Generic[T]):
 
         assert isinstance(stream, IStream), self._MSG_WRONG_ASYNC.format("encode")
 
-        return await self._encode(stream, obj)
+        if ctx is None:
+            ctx = Context()
 
-    async def decode(self, stream: IStream) -> T:
+        return await self._encode(stream, obj, ctx)
+
+    async def decode(self, stream: IStream, ctx: Context | None = None) -> T:
         """
         Decodes the packet asynchronously.
 
         :param stream: The asynchronous stream to decode from
+        :param ctx: The current context, if present
         :return: The decoded object
 
         :raises StreamReadError: if reading from the stream fails
@@ -55,7 +60,10 @@ class IPacket(abc.ABC, typing.Generic[T]):
 
         assert isinstance(stream, IStream), self._MSG_WRONG_ASYNC.format("decode")
 
-        return await self._decode(stream)
+        if ctx is None:
+            ctx = Context()
+
+        return await self._decode(stream, ctx)
 
     @typing.overload
     def encode_sync(self, stream: typing.BinaryIO, obj: T) -> None:
@@ -88,14 +96,17 @@ class IPacket(abc.ABC, typing.Generic[T]):
         else:
             assert False, "Unknown overload"
 
+        stream = SyncStream.create_from(stream)
+
         asyncio.get_event_loop().run_until_complete(
-            self.encode(SyncStream.create_from(stream), obj)
+            self.encode(stream, obj)
         )
 
         if len(args) == 1:
-            return stream.getvalue()
+            assert isinstance(stream, BytesStream)
+            return stream.get_data()
 
-    def decode_sync(self, stream: typing.BinaryIO | typing.SupportsBytes) -> T:
+    def decode_sync(self, stream: typing.BinaryIO | bytes) -> T:
         """
         Encodes the packet synchronously
 
@@ -103,38 +114,104 @@ class IPacket(abc.ABC, typing.Generic[T]):
         :return: The decoded object
         """
 
-        if isinstance(stream, typing.SupportsBytes):
-            stream = io.BytesIO(bytes(stream))
+        if isinstance(stream, (bytes, bytearray, memoryview)):
+            stream = io.BytesIO(stream)
 
         return asyncio.get_event_loop().run_until_complete(
             self.decode(SyncStream.create_from(stream))
         )
 
-    def sizeof(self) -> int:
+    def sizeof(self, ctx: Context | None = None) -> int:
         """
         Returns the size of the struct, if it is constant-size.
 
+        :param ctx: The current context, if present
         :raises errors.NotConstSizeable: if the packet's size depends on its contents
         """
-        return self._sizeof()
+
+        if ctx is None:
+            ctx = Context()
+
+        return self._sizeof(ctx)
 
     ####################
     # Abstract methods #
     ####################
 
     @abc.abstractmethod
-    async def _encode(self, stream: IStream, obj: T) -> None:
+    async def _encode(self, stream: IStream, obj: T, ctx: Context) -> None:
         pass
 
     @abc.abstractmethod
-    async def _decode(self, stream: IStream) -> T:
+    async def _decode(self, stream: IStream, ctx: Context) -> T:
         pass
 
     @abc.abstractmethod
-    def _sizeof(self) -> int:
+    def _sizeof(self, ctx: Context) -> int:
         pass
+
+
+class PacketWrapper(IPacket):
+    def __init__(self, wrapped: IPacket):
+        self.wrapped = wrapped
+
+    async def _encode(self, stream: IStream, obj: T, ctx: Context) -> None:
+        return await self.wrapped._encode(stream, obj, ctx)
+
+    async def _decode(self, stream: IStream, ctx: Context) -> T:
+        return await self.wrapped._decode(stream, ctx)
+
+    def _sizeof(self, ctx: Context) -> int:
+        return self.wrapped._sizeof(ctx)
+
+
+class PacketValidator(PacketWrapper):
+    def __init__(self, wrapped: IPacket):
+        super().__init__(wrapped)
+
+    def validate(self, ctx: Context) -> None:
+        if not self._validate(ctx):
+            raise PacketInvalidError("Validation failed")
+
+    async def _encode(self, stream: IStream, obj: T, ctx: Context) -> None:
+        self.validate(ctx)
+        return await self.wrapped._encode(stream, obj, ctx)
+
+    async def _decode(self, stream: IStream, ctx: Context) -> T:
+        obj: T = await self.wrapped._decode(stream, ctx)
+        self.validate(ctx)
+        return obj
+
+    @abc.abstractmethod
+    def _validate(self, ctx: Context) -> bool:
+        pass
+
+
+U = typing.TypeVar("U")
+
+
+class PacketAdapter(PacketWrapper):
+    def __init__(self, wrapped: IPacket):
+        super().__init__(wrapped)
+
+    async def _encode(self, stream: IStream, obj: T, ctx: Context) -> None:
+        return await self.wrapped._encode(stream, self._preprocess_enc(obj, ctx), ctx)
+
+    async def _decode(self, stream: IStream, ctx: Context) -> T:
+        return self._preprocess_dec(await self.wrapped._decode(stream, ctx), ctx)
+
+    @abc.abstractmethod
+    def _preprocess_enc(self, obj: T, ctx: Context) -> U:
+        pass
+
+    @abc.abstractmethod
+    def _preprocess_dec(self, obj: U, ctx: Context) -> T:
+        pass
+
+
+# TODO: Add __repr__'s
 
 
 __all__ = (
-    "IPacket",
+    "IPacket", "Context"
 )
