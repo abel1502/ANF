@@ -14,6 +14,11 @@ class Context:
         self.members: typing.Dict[str, typing.Any] = members or {}
         self.encoded: typing.Dict[str, typing.Any] = {}
 
+    def get_self(self, encoded: bool = False) -> typing.Any:
+        if self.cur_name is None:
+            raise KeyError("Not a struct member")
+        return self.encoded[self.cur_name] if encoded else self.members[self.cur_name]
+
     def get_member(self, name: str, encoded: bool = False) -> typing.Any | "Context":
         if name == ".":
             return self
