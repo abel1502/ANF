@@ -10,17 +10,24 @@ from .context import *
 from .ipacket import *
 
 
-PyStructType: typing.TypeAlias = bool | int | float
+# PyStructType: typing.TypeAlias = bool | int | float
+IntegralT = typing.TypeVar("IntegralT", bool, int, float)
 
 
-class PyStructPacket(IPacket[PyStructType]):
+class PyStructPacket(IPacket[IntegralT]):
     def __init__(self, fmt: str, endianness: str = "!"):
         assert fmt in "bB?hHiIlLqQnNefd"
         assert endianness in "@=<>!"
 
         self._struct: struct.Struct = struct.Struct(endianness + fmt)
+        self._expected_type: typing.Type = \
+            int if fmt in "bBhHiIlLqQnN" else \
+            float if fmt in "efd" else \
+            bool
 
-    async def _encode(self, stream: IStream, obj: PyStructType, ctx: Context) -> None:
+    async def _encode(self, stream: IStream, obj: IntegralT, ctx: Context) -> None:
+        PacketObjTypeError.validate(obj, self._expected_type)
+
         try:
             data: bytes = ctx.register_enc(self._struct.pack(obj))
         except struct.error as e:
@@ -28,7 +35,7 @@ class PyStructPacket(IPacket[PyStructType]):
 
         await stream.send(data)
 
-    async def _decode(self, stream: IStream, ctx: Context) -> PyStructType:
+    async def _decode(self, stream: IStream, ctx: Context) -> IntegralT:
         data = ctx.register_enc(await stream.recv(self.sizeof(ctx)))
 
         try:
@@ -49,15 +56,17 @@ class PyStructPacket(IPacket[PyStructType]):
 
 
 class BytesIntPacket(IPacket[int]):
-    def __init__(self, size: int, signed: bool, endianness: typing.Literal["!", "<", ">"] = "!"):
+    def __init__(self, size: CtxParam[int], signed: bool, endianness: typing.Literal["!", "<", ">"] = "!"):
         assert endianness in "!><"
 
-        self._size: int = size
+        self._size: CtxParam[int] = size
         self._signed: bool = signed
         self._endianness: typing.Literal["little", "big"] = \
             typing.cast(typing.Literal["little", "big"], "little" if endianness == "<" else "big")
 
     async def _encode(self, stream: IStream, obj: int, ctx: Context) -> None:
+        PacketObjTypeError.validate(obj, int)
+
         try:
             data: bytes = ctx.register_enc(obj.to_bytes(
                 self._size, self._endianness, signed=self._signed
@@ -80,7 +89,7 @@ class BytesIntPacket(IPacket[int]):
         return obj
 
     def _sizeof(self, ctx: Context) -> int:
-        return self._size
+        return eval_ctx_param(self._size, ctx)
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}(sz={self._size}, signed={self._signed}, order={self._endianness})"
@@ -91,6 +100,8 @@ class VarInt(IPacket):
         pass
 
     async def _encode(self, stream: IStream, obj: int, ctx: Context) -> None:
+        PacketObjTypeError.validate(obj, int)
+
         data = bytearray()
 
         if obj < 0:
@@ -98,6 +109,7 @@ class VarInt(IPacket):
 
         while obj >= 0x80:
             data.append((obj & 0x7f) | 0x80)
+            obj >>= 7
         assert obj < 0x80
         data.append(obj)
 
@@ -110,7 +122,7 @@ class VarInt(IPacket):
         seen_end = False
         while not seen_end:
             byte = (await stream.recv(1))[0]
-            seen_end = byte & 0x80
+            seen_end = not (byte & 0x80)
             data.append(byte)
 
         num = 0
@@ -123,24 +135,21 @@ class VarInt(IPacket):
         return f"{type(self).__name__}"
 
 
-VarInt = VarInt()
-VarInt.__call__ = lambda self: self
+VarInt: VarInt = VarInt()
 
 
-class ZigZag(IPacket):
+class ZigZag(PacketAdapter):
     def __init__(self):
-        pass
+        super().__init__(VarInt)
 
-    async def _encode(self, stream: IStream, obj: int, ctx: Context) -> None:
+    def _modify_enc(self, obj: int, ctx: Context) -> int:
         obj <<= 1
         if obj < 0:
             obj = ~obj
 
-        await VarInt.encode(stream, obj, ctx)
+        return obj
 
-    async def _decode(self, stream: IStream, ctx: Context) -> int:
-        obj = await VarInt.decode(stream, ctx)
-
+    def _modify_dec(self, obj: int, ctx: Context) -> int:
         if obj & 1:
             obj = ~obj
         obj >>= 1
@@ -151,12 +160,11 @@ class ZigZag(IPacket):
         return f"{type(self).__name__}"
 
 
-ZigZag = ZigZag()
-ZigZag.__call__ = lambda self: self
+ZigZag: ZigZag = ZigZag()
 
 
-def _create_int_types() -> typing.Dict[str, PyStructPacket]:
-    _sz_to_struct = {8: "b", 16: "h", 32: "i", 64: "l"}
+def _create_int_types() -> typing.Dict[str, PyStructPacket[int] | typing.Tuple[str, ...]]:
+    _sz_to_struct = {8: "b", 16: "h", 32: "i", 64: "q"}
     _endian_to_struct = {"l": "<", "b": ">", "": "!"}  # Default is network, i.e. big
 
     result = {}
@@ -181,33 +189,53 @@ def _create_int_types() -> typing.Dict[str, PyStructPacket]:
     return result
 
 
-locals().update(_create_int_types())
+globals().update(_create_int_types())
+
+
+Half = PyStructPacket("e")
+Float = PyStructPacket("f")
+Double = PyStructPacket("d")
+
 
 # Type hints for the above code
-Int8l:   PyStructPacket
-Int8b:   PyStructPacket
-Int8:    PyStructPacket
-UInt8l:  PyStructPacket
-UInt8b:  PyStructPacket
-UInt8:   PyStructPacket
-Int16l:  PyStructPacket
-Int16b:  PyStructPacket
-Int16:   PyStructPacket
-UInt16l: PyStructPacket
-UInt16b: PyStructPacket
-UInt16:  PyStructPacket
-Int32l:  PyStructPacket
-Int32b:  PyStructPacket
-Int32:   PyStructPacket
-UInt32l: PyStructPacket
-UInt32b: PyStructPacket
-UInt32:  PyStructPacket
-Int64l:  PyStructPacket
-Int64b:  PyStructPacket
-Int64:   PyStructPacket
-UInt64l: PyStructPacket
-UInt64b: PyStructPacket
-UInt64:  PyStructPacket
+Int8l:   PyStructPacket[int]
+Int8b:   PyStructPacket[int]
+Int8:    PyStructPacket[int]
+UInt8l:  PyStructPacket[int]
+UInt8b:  PyStructPacket[int]
+UInt8:   PyStructPacket[int]
+Int16l:  PyStructPacket[int]
+Int16b:  PyStructPacket[int]
+Int16:   PyStructPacket[int]
+UInt16l: PyStructPacket[int]
+UInt16b: PyStructPacket[int]
+UInt16:  PyStructPacket[int]
+Int32l:  PyStructPacket[int]
+Int32b:  PyStructPacket[int]
+Int32:   PyStructPacket[int]
+UInt32l: PyStructPacket[int]
+UInt32b: PyStructPacket[int]
+UInt32:  PyStructPacket[int]
+Int64l:  PyStructPacket[int]
+Int64b:  PyStructPacket[int]
+Int64:   PyStructPacket[int]
+UInt64l: PyStructPacket[int]
+UInt64b: PyStructPacket[int]
+UInt64:  PyStructPacket[int]
+
+Half:   PyStructPacket[float]
+Float:  PyStructPacket[float]
+Double: PyStructPacket[float]
+
+# (These are singletons, and this is here to help PyCharm understand it)
+VarInt: type(VarInt)
+ZigZag: type(ZigZag)
 
 
-__all__ = ("PyStructPacket", *_all_int_types)
+__all__ = (
+    "PyStructPacket",
+    "BytesIntPacket",
+    *_all_int_types,
+    "VarInt", "ZigZag",
+    "Half", "Float", "Double"
+)
