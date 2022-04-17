@@ -2,39 +2,50 @@ import abc
 import typing
 
 
+T = typing.TypeVar("T")
+
+
 class Context:
     KEEP_ENCODED: typing.ClassVar[bool] = True
 
     def __init__(self,
                  parent: typing.Optional["Context"] = None,
-                 cur_name: str | None = None,
-                 members: typing.Dict[str, typing.Any] | None = None):
+                 value: typing.Any | None = None):
         self.parent: Context | None = parent
-        self.cur_name: str | None = cur_name
-        self.members: typing.Dict[str, typing.Any] = members or {}
-        self.encoded: typing.Dict[str, typing.Any] = {}
+        self.value: typing.Any | None = value
+        self.encoded: bytes | None = None
+        self.members: typing.Dict[str, Context] = {}
 
     def get_self(self, encoded: bool = False) -> typing.Any:
-        if self.cur_name is None:
-            raise KeyError("Not a struct member")
-        return self.encoded[self.cur_name] if encoded else self.members[self.cur_name]
+        """
+        Do not rely on the value being the same as the object passed to you.
+        In case your packet is wrapped in an adaptor, it would be the original,
+        outermost value instead.
+        """
+        return self.encoded if encoded else self.value
 
-    def get_member(self, name: str, encoded: bool = False) -> typing.Any | "Context":
-        if name == ".":
+    def get_member(self, name: str) -> "Context":
+        if name == "":
             return self
 
-        if name in ("..", "_"):
+        if name == "_":
             if self.parent is None:
                 raise KeyError("Context has no parent")
             return self.parent
 
-        return (self.encoded if encoded else self.members)[name]
+        return self.members[name]
+
+    def make_child(self, name: str) -> "Context":
+        ctx = Context(self)
+        self.members[name] = ctx
+        return ctx
+
+    def register_val(self, value: T) -> T:
+        self.value = value
+        return value
 
     def register_enc(self, data: bytes) -> bytes:
-        if self.parent is not None:
-            assert self.cur_name is not None
-            self.parent.encoded[self.cur_name] = data
-
+        self.encoded = data
         return data
 
 
@@ -79,15 +90,12 @@ class Path:
 
     def __call__(self, ctx: Context) -> typing.Any:
         for name in self.path:
-            ctx = ctx.get_member(name, encoded=self._encoded)
+            ctx = ctx.get_member(name)
 
-        return ctx
+        return ctx.encoded if self._encoded else ctx.value
 
     def __repr__(self) -> str:
         return "/".join(self.path)
-
-
-T = typing.TypeVar("T")
 
 
 def _wrap_path_func(func: typing.Callable[[typing.Any], T]) \
@@ -95,6 +103,28 @@ def _wrap_path_func(func: typing.Callable[[typing.Any], T]) \
     return lambda path: lambda ctx: func(path(ctx))
 
 
-this = Path()
-this.__repr__ = lambda self:  f"this/{super()!r}"
+this = Path("_")
+this.__repr__ = lambda self: "this" + repr(super()).split("_", 1)[1]
 len_ = _wrap_path_func(len)
+
+
+CtxParam: typing.TypeAlias = T | typing.Callable[[Context], T]
+
+
+def eval_ctx_param(param: CtxParam[T], ctx: Context) -> T:
+    try:
+        param = param(ctx)
+    except TypeError:
+        pass
+
+    return param
+
+
+__all__ = (
+    "Context",
+    "Path",
+    "this",
+    "len_",
+    "CtxParam",
+    "eval_ctx_param"
+)
