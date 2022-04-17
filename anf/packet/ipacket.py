@@ -43,6 +43,8 @@ class IPacket(abc.ABC, typing.Generic[T]):
         if ctx is None:
             ctx = Context()
 
+        ctx.register_val(obj)
+
         return await self._encode(stream, obj, ctx)
 
     async def decode(self, stream: IStream, ctx: Context | None = None) -> T:
@@ -63,7 +65,7 @@ class IPacket(abc.ABC, typing.Generic[T]):
         if ctx is None:
             ctx = Context()
 
-        return await self._decode(stream, ctx)
+        return ctx.register_val(await self._decode(stream, ctx))
 
     @typing.overload
     def encode_sync(self, stream: typing.BinaryIO, obj: T) -> None:
@@ -106,20 +108,26 @@ class IPacket(abc.ABC, typing.Generic[T]):
             assert isinstance(stream, BytesStream)
             return stream.get_data()
 
-    def decode_sync(self, stream: typing.BinaryIO | bytes) -> T:
+    def decode_sync(self, stream: typing.BinaryIO | bytes, completely: bool = False) -> T:
         """
-        Encodes the packet synchronously
+        Decodes the packet synchronously
 
         :param stream: The synchronous stream or a byte sequence to decode from
+        :param completely: Whether to expect the stream to be drained after the decoding
         :return: The decoded object
         """
 
         if isinstance(stream, (bytes, bytearray, memoryview)):
             stream = io.BytesIO(stream)
 
-        return asyncio.get_event_loop().run_until_complete(
-            self.decode(SyncStream.create_from(stream))
-        )
+        sync_stream: SyncStream = SyncStream.create_from(stream)
+
+        data = asyncio.get_event_loop().run_until_complete(self.decode(sync_stream))
+
+        if completely and not sync_stream.at_eof():
+            raise PacketDecodeError("Unexpected trailing bytes remaining")
+
+        return data
 
     def sizeof(self, ctx: Context | None = None) -> int:
         """
@@ -134,9 +142,16 @@ class IPacket(abc.ABC, typing.Generic[T]):
 
         return self._sizeof(ctx)
 
-    ####################
-    # Abstract methods #
-    ####################
+    def renamed(self, name: str) -> "RenamedPacket":
+        return RenamedPacket(self, name)
+
+    @property
+    def name(self) -> str | None:
+        return None
+
+    ########################
+    # Overrideable methods #
+    ########################
 
     @abc.abstractmethod
     async def _encode(self, stream: IStream, obj: T, ctx: Context) -> None:
@@ -156,7 +171,7 @@ class IPacket(abc.ABC, typing.Generic[T]):
 
 class PacketWrapper(IPacket):
     def __init__(self, wrapped: IPacket):
-        self.wrapped = wrapped
+        self.wrapped: IPacket = wrapped
 
     async def _encode(self, stream: IStream, obj: T, ctx: Context) -> None:
         return await self.wrapped._encode(stream, obj, ctx)
@@ -166,6 +181,13 @@ class PacketWrapper(IPacket):
 
     def _sizeof(self, ctx: Context) -> int:
         return self.wrapped._sizeof(ctx)
+
+    @property
+    def name(self) -> str | None:
+        return self.wrapped.name
+
+    def __repr__(self):
+        return repr(self.wrapped)
 
 
 class PacketValidator(PacketWrapper):
@@ -198,23 +220,39 @@ class PacketAdapter(PacketWrapper):
         super().__init__(wrapped)
 
     async def _encode(self, stream: IStream, obj: T, ctx: Context) -> None:
-        return await self.wrapped._encode(stream, self._preprocess_enc(obj, ctx), ctx)
+        return await self.wrapped._encode(stream, self._modify_enc(obj, ctx), ctx)
 
     async def _decode(self, stream: IStream, ctx: Context) -> T:
-        return self._preprocess_dec(await self.wrapped._decode(stream, ctx), ctx)
+        return self._modify_dec(await self.wrapped._decode(stream, ctx), ctx)
 
     @abc.abstractmethod
-    def _preprocess_enc(self, obj: T, ctx: Context) -> U:
+    def _modify_enc(self, obj: T, ctx: Context) -> U:
         pass
 
     @abc.abstractmethod
-    def _preprocess_dec(self, obj: U, ctx: Context) -> T:
+    def _modify_dec(self, obj: U, ctx: Context) -> T:
         pass
+
+
+class RenamedPacket(PacketWrapper):
+    def __init__(self, wrapped, name):
+        super().__init__(wrapped)
+
+        self._name = name
+
+    @property
+    def name(self) -> str | None:
+        return self._name
 
 
 # TODO: Add __repr__'s
+# TODO: Validate obj types
 
 
 __all__ = (
-    "IPacket", "Context"
+    "IPacket",
+    "PacketWrapper",
+    "PacketValidator",
+    "PacketAdapter",
+    "RenamedPacket"
 )
