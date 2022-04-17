@@ -1,10 +1,12 @@
 import typing
 import asyncio
 import io
+import math
 from anf.packet.integral import *
 from anf.packet.bytestr import *
 from anf.packet.compound import *
 from anf.packet.ipacket import *
+from anf.packet.context import *
 from anf.stream import *
 
 
@@ -33,6 +35,7 @@ async def main():
         (ZigZag, 12345678),
         (BytesPacket(4), b'abel'),
         (CountPrefixed(VarInt, BytesPacket), b'Abel is the best!'),
+        (SizePrefixed(UInt8, BytesIntPacket(12, False)), 123456),
     )
 
     for packet, obj in options:

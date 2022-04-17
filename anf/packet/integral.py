@@ -69,7 +69,7 @@ class BytesIntPacket(IPacket[int]):
 
         try:
             data: bytes = ctx.register_enc(obj.to_bytes(
-                self._size, self._endianness, signed=self._signed
+                self.sizeof(ctx), self._endianness, signed=self._signed
             ))
         except struct.error as e:
             raise PacketEncodeError() from e
@@ -237,5 +237,5 @@ __all__ = (
     "BytesIntPacket",
     *_all_int_types,
     "VarInt", "ZigZag",
-    "Half", "Float", "Double"
+    "Half", "Float", "Double",
 )

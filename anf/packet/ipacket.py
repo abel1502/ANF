@@ -164,7 +164,7 @@ class IPacket(abc.ABC, typing.Generic[T]):
     # @abc.abstractmethod
     def _sizeof(self, ctx: Context) -> int:
         try:
-            return len(ctx.get_self(encoded=True))
+            return len(ctx.encoded)
         except KeyError:
             raise NotSizeableError("Packet wasn't yet encoded, and size cannot be determined")
 
@@ -254,5 +254,5 @@ __all__ = (
     "PacketWrapper",
     "PacketValidator",
     "PacketAdapter",
-    "RenamedPacket"
+    "RenamedPacket",
 )

@@ -39,5 +39,5 @@ Byte: Byte = Byte()
 
 __all__ = (
     "BytesPacket",
-    "Byte"
+    "Byte",
 )

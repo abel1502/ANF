@@ -12,17 +12,22 @@ class Context:
                  parent: typing.Optional["Context"] = None,
                  value: typing.Any | None = None):
         self.parent: Context | None = parent
-        self.value: typing.Any | None = value
+        self._value_set: bool = False
+        self._value: typing.Any = value
         self.encoded: bytes | None = None
         self.members: typing.Dict[str, Context] = {}
 
-    def get_self(self, encoded: bool = False) -> typing.Any:
-        """
-        Do not rely on the value being the same as the object passed to you.
-        In case your packet is wrapped in an adaptor, it would be the original,
-        outermost value instead.
-        """
-        return self.encoded if encoded else self.value
+    @property
+    def value(self) -> typing.Any:
+        if not self._value_set:
+            raise AttributeError("Value not yet set")
+
+        return self._value
+
+    @value.setter
+    def value(self, val: typing.Any):
+        self._value_set = True
+        self._value = val
 
     def get_member(self, name: str) -> "Context":
         if name == "":
@@ -34,6 +39,9 @@ class Context:
             return self.parent
 
         return self.members[name]
+
+    def __getattr__(self, item: str) -> typing.Any:
+        return self.get_member(item)
 
     def make_child(self, name: str) -> "Context":
         ctx = Context(self)
@@ -112,10 +120,8 @@ CtxParam: typing.TypeAlias = T | typing.Callable[[Context], T]
 
 
 def eval_ctx_param(param: CtxParam[T], ctx: Context) -> T:
-    try:
+    if hasattr(param, "__call__"):
         param = param(ctx)
-    except TypeError:
-        pass
 
     return param
 
@@ -126,5 +132,5 @@ __all__ = (
     "this",
     "len_",
     "CtxParam",
-    "eval_ctx_param"
+    "eval_ctx_param",
 )
