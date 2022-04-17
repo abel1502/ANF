@@ -51,6 +51,15 @@ class IStream(abc.ABC):
         self.close()
         await self.wait_closed()
 
+    @staticmethod
+    def _check_eof(data: bytes, size: int = None) -> bytes:
+        assert isinstance(data, bytes)
+
+        if not data and (size is None or size > 0):
+            raise StreamReadError("EOF was hit")
+
+        return data
+
 
 class Stream(IStream):
     def __init__(self, rw: typing.Tuple[asyncio.StreamReader, asyncio.StreamWriter]):
@@ -92,7 +101,7 @@ class Stream(IStream):
             else:
                 read = self.reader.read(size)
 
-            return await read
+            return self._check_eof(await read, size)
         except (ConnectionError, asyncio.IncompleteReadError) as e:
             raise StreamReadError from e
 
@@ -163,15 +172,6 @@ class SyncStream(IStream, typing.Generic[T]):
         except (OSError,) as e:
             raise StreamWriteError from e
 
-    @staticmethod
-    def _check_eof(data: bytes) -> bytes:
-        assert isinstance(data, bytes)
-
-        if not data:
-            raise StreamReadError("EOF was hit")
-
-        return data
-
     async def _recv(self, size: int | None = None, exactly: bool = True) -> bytes:
         if size is None:
             size = -1
@@ -180,7 +180,7 @@ class SyncStream(IStream, typing.Generic[T]):
             return self._check_eof(
                 await self._repeat_while_blocking(
                     lambda: self.wrapped_stream.read(size)
-                )
+                ), size
             )
 
         data = bytearray()
@@ -188,7 +188,7 @@ class SyncStream(IStream, typing.Generic[T]):
             data += self._check_eof(
                 await self._repeat_while_blocking(
                     lambda: self.wrapped_stream.read(size - len(data))
-                )
+                ), size
             )
         return bytes(data)
 
@@ -207,7 +207,19 @@ class SyncStream(IStream, typing.Generic[T]):
     async def recv_line(self) -> bytes:
         return await self.recv_until(b'\n')
 
+    def at_eof(self) -> bool:
+        if self.wrapped_stream.seekable():
+            cur_pos = self.wrapped_stream.tell()
+            end_pos = self.wrapped_stream.seek(0, io.SEEK_END)
+            self.wrapped_stream.seek(cur_pos)
+
+            return cur_pos == end_pos
+
+        assert False, "Cannot identify eof"
+
     def reset(self) -> None:
+        assert self.wrapped_stream.seekable()
+
         self.wrapped_stream.seek(0)
 
     @staticmethod
