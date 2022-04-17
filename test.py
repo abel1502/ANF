@@ -2,19 +2,46 @@ import typing
 import asyncio
 import io
 from anf.packet.integral import *
+from anf.packet.bytestr import *
+from anf.packet.compound import *
+from anf.packet.ipacket import *
 from anf.stream import *
 
 
-async def main():
-    packet = UInt32
+T = typing.TypeVar("T")
+
+
+async def test(packet: IPacket[T], obj: T, verbose: bool = True) -> bool:
+    if verbose:
+        print("packet:", packet)
+        print("obj:", obj)
     stream = BytesStream()
-    obj = 123
     await packet.encode(stream, obj)
     enc = stream.get_data()
-    print(enc.hex())
-    stream.wrapped_stream.seek(0)
+    if verbose:
+        print("enc:", enc.hex())
+    stream.reset()
     dec = await packet.decode(stream)
-    print(dec)
+    if verbose:
+        print("dec:", dec)
+
+    return obj == dec
+
+
+async def main():
+    options = (
+        (ZigZag, 12345678),
+        (BytesPacket(4), b'abel'),
+        (CountPrefixed(VarInt, BytesPacket), b'Abel is the best!'),
+    )
+
+    for packet, obj in options:
+        result: bool = await test(packet, obj)
+
+        if not result:
+            print("ERROR!  ^^^")
+
+        print()
 
 
 if __name__ == "__main__":
