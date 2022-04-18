@@ -31,11 +31,21 @@ async def test(packet: IPacket[T], obj: T, verbose: bool = True) -> bool:
 
 
 async def main():
+    MyStruct1 = Struct(id=VarInt, msg=CountPrefixed(VarInt, BytesPacket))
+
+    class MyStruct2(metaclass=Struct):
+        id = VarInt
+        msg = CountPrefixed(VarInt, BytesPacket)
+
+    my_struct_val = dict(id=123, msg=b"Woah, structs too?!")
+
     options = (
         (ZigZag, 12345678),
         (BytesPacket(4), b'abel'),
         (CountPrefixed(VarInt, BytesPacket), b'Abel is the best!'),
         (SizePrefixed(UInt8, BytesIntPacket(12, False)), 123456),
+        (MyStruct1, my_struct_val),
+        (MyStruct2, my_struct_val),
     )
 
     for packet, obj in options:
@@ -52,77 +62,6 @@ if __name__ == "__main__":
 
 
 exit(0)
-
-
-from anf.network import *
-from anf.packet import *
-
-
-async def test_example_com():
-    async with await connect("example.com", 80) as stream:
-        await stream.send(b"GET / HTTP/1.1\r\n"
-                          b"Host: example.com\r\n"
-                          b"\r\n")
-
-        # resp = await stream.recv(b"\r\n\r\n")
-        resp = await stream.recv(4096, exactly=False)
-
-        print(resp.decode())
-
-
-StringPacket = DynamicBytesPacket.create_simple(1, name="StringPacket")
-
-
-class CmdPacket(CompoundPacket):
-    members = CompoundPacket.parse_definition(
-        (UInt64Packet, "cmd"),
-        (StringPacket, "arg")
-    )
-
-    @property
-    def cmd(self) -> int:
-        return typing.cast(UInt64Packet, self.member("cmd")).value
-
-    @cmd.setter
-    def cmd(self, value: int):
-        self.member("cmd").value = value
-
-    @property
-    def arg(self) -> str:
-        return typing.cast(StringPacket, self.member("arg")).data.decode()
-
-    @arg.setter
-    def arg(self, value: str | bytes):
-        if isinstance(value, str):
-            value = value.encode()
-        typing.cast(StringPacket, self.member("arg")).data = value
-
-    @typing.overload
-    def __init__(self):
-        pass
-
-    @typing.overload
-    def __init__(self, cmd: int, arg: str | bytes = ""):
-        pass
-
-    def __init__(self, *args):
-        match args:
-            case []:
-                super().__init__(UInt64Packet(), StringPacket())
-                return
-            case [int()]:
-                cmd = args[0]
-                arg = ""
-            case [int(), str()]:
-                cmd = args[0]
-                arg = args[1].encode()
-            case [int(), bytes()]:
-                cmd = args[0]
-                arg = args[1]
-            case _:
-                assert False, "Wrong argument types"
-
-        super().__init__(UInt64Packet(cmd), StringPacket(arg))
 
 
 class Server(BaseServer):

@@ -12,24 +12,32 @@ class Context:
                  parent: typing.Optional["Context"] = None,
                  value: typing.Any | None = None):
         self.parent: Context | None = parent
-        self._value_set: bool = False
-        self._value: typing.Any = value
+        self._value: typing.Any | None = value
         self.encoded: bytes | None = None
         self.members: typing.Dict[str, Context] = {}
 
     @property
+    def value_or_none(self) -> typing.Any | None:
+        return self._value
+
+    @value_or_none.setter
+    def value_or_none(self, val: typing.Any | None):
+        self._value = val
+
+    @property
     def value(self) -> typing.Any:
-        if not self._value_set:
+        if self._value is None:
             raise AttributeError("Value not yet set")
 
         return self._value
 
     @value.setter
     def value(self, val: typing.Any):
-        self._value_set = True
-        self._value = val
+        self.value_or_none = val
 
     def get_member(self, name: str) -> "Context":
+        assert isinstance(name, str)
+
         if name == "":
             return self
 
@@ -40,12 +48,30 @@ class Context:
 
         return self.members[name]
 
+    def get_member_or_none(self, name: str | None) -> typing.Optional["Context"]:
+        if name is None:
+            return None
+
+        try:
+            return self.get_member(name)
+        except KeyError:
+            return None
+
     def __getattr__(self, item: str) -> typing.Any:
         return self.get_member(item)
 
-    def make_child(self, name: str) -> "Context":
-        ctx = Context(self)
-        self.members[name] = ctx
+    def make_child(self, name: str | None, value: typing.Any | None = None) -> "Context":
+        """
+        Either return the child context, or make one if it isn't yet present
+        """
+
+        ctx: Context | None = self.get_member_or_none(name)
+        if ctx is None:
+            ctx = Context(self, value=value)
+            if name is not None:
+                self.members[name] = ctx
+        else:
+            assert value is None  # TODO: Remove this later?
         return ctx
 
     def register_val(self, value: T) -> T:
@@ -57,8 +83,10 @@ class Context:
         return data
 
 
+# TODO: Perhaps rework to be more convenient
 class Path:
-    def __init__(self, initial: str | typing.Iterable[str] | "Path" = (), encoded: bool = False):
+    def __init__(self, initial: str | typing.Iterable[str] | "Path" = (), *,
+                 encoded: bool = False, or_none: bool = False):
         if isinstance(initial, Path):
             # noinspection PyProtectedMember
             encoded = initial._encoded
@@ -71,16 +99,20 @@ class Path:
 
         self.path: typing.List[str] = initial
         self._encoded: bool = encoded
+        self._or_none: bool = or_none
 
     def encoded(self, value: bool = True):
         self._encoded = value
+
+    def or_none(self, value: bool = True):
+        self._or_none = value
 
     @staticmethod
     def _split_path(path: str) -> list[str]:
         return path.split("/")
 
     def __truediv__(self, other: typing.Any) -> "Path":
-        copy = Path(self.path, self._encoded)
+        copy = Path(self.path, encoded=self._encoded, or_none=self._or_none)
 
         copy /= other
 
@@ -98,8 +130,14 @@ class Path:
 
     def __call__(self, ctx: Context) -> typing.Any:
         for name in self.path:
-            ctx = ctx.get_member(name)
+            get_member: typing.Callable[[str], Context | None] = \
+                ctx.get_member_or_none if self._or_none else ctx.get_member
+            ctx = get_member(name)
 
+        if self._or_none:
+            return ctx.encoded if self._encoded else ctx.value_or_none
+        if self._encoded and ctx.encoded is None:
+            raise KeyError("Field not yet encoded")
         return ctx.encoded if self._encoded else ctx.value
 
     def __repr__(self) -> str:
