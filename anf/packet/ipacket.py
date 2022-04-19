@@ -149,6 +149,11 @@ class IPacket(abc.ABC, typing.Generic[T]):
     def name(self) -> str | None:
         return None
 
+    def __rtruediv__(self, other: str) -> "RenamedPacket":
+        if not isinstance(other, str):
+            return NotImplemented
+        return self.renamed(other)
+
     ########################
     # Overrideable methods #
     ########################
@@ -169,8 +174,8 @@ class IPacket(abc.ABC, typing.Generic[T]):
             raise NotSizeableError("Packet wasn't yet encoded, and size cannot be determined")
 
 
-class PacketWrapper(IPacket):
-    def __init__(self, wrapped: IPacket):
+class PacketWrapper(IPacket[T]):
+    def __init__(self, wrapped: IPacket[T]):
         self.wrapped: IPacket = wrapped
 
     async def _encode(self, stream: IStream, obj: T, ctx: Context) -> None:
@@ -190,7 +195,7 @@ class PacketWrapper(IPacket):
         return repr(self.wrapped)
 
 
-class PacketValidator(PacketWrapper):
+class PacketValidator(PacketWrapper[T]):
     def __init__(self, wrapped: IPacket):
         super().__init__(wrapped)
 
@@ -215,7 +220,7 @@ class PacketValidator(PacketWrapper):
 U = typing.TypeVar("U")
 
 
-class PacketAdapter(PacketWrapper):
+class PacketAdapter(PacketWrapper[T]):
     def __init__(self, wrapped: IPacket):
         super().__init__(wrapped)
 
