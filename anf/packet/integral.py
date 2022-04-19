@@ -125,6 +125,8 @@ class VarInt(IPacket):
             seen_end = not (byte & 0x80)
             data.append(byte)
 
+        ctx.register_enc(bytes(data))
+
         num = 0
         for byte in reversed(data):
             num = (num << 7) | (byte & 0x7f)
