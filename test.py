@@ -6,6 +6,7 @@ from anf.packet.integral import *
 from anf.packet.bytestr import *
 from anf.packet.compound import *
 from anf.packet.ipacket import *
+from anf.packet.misc import *
 from anf.packet.context import *
 from anf.stream import *
 
@@ -30,22 +31,40 @@ async def test(packet: IPacket[T], obj: T, verbose: bool = True) -> bool:
     return obj == dec
 
 
+def _gen_my_struct(idx: int) -> Struct:
+    match idx:
+        case 0:
+            MyStruct = Struct(
+                id=VarInt,
+                msg=CountPrefixed(VarInt, BytesPacket),
+            )
+        case 1:
+            class MyStruct(metaclass=Struct):
+                id = VarInt
+                msg = CountPrefixed(VarInt, BytesPacket)
+        case 2:
+            MyStruct = Struct(
+                "id" / VarInt,
+                "msg" / CountPrefixed(VarInt, BytesPacket),
+                NoOpPacket,  # Only this way you can add unnamed fields
+            )
+        case _:
+            assert False, "Wrong idx"
+    return MyStruct
+
+
 async def main():
-    MyStruct1 = Struct(id=VarInt, msg=CountPrefixed(VarInt, BytesPacket))
-
-    class MyStruct2(metaclass=Struct):
-        id = VarInt
-        msg = CountPrefixed(VarInt, BytesPacket)
-
+    my_struct = _gen_my_struct(2)
     my_struct_val = dict(id=123, msg=b"Woah, structs too?!")
 
     options = (
+        (VarInt, 0),
         (ZigZag, 12345678),
         (BytesPacket(4), b'abel'),
         (CountPrefixed(VarInt, BytesPacket), b'Abel is the best!'),
         (SizePrefixed(UInt8, BytesIntPacket(12, False)), 123456),
-        (MyStruct1, my_struct_val),
-        (MyStruct2, my_struct_val),
+        (my_struct, my_struct_val),
+        (PaddedPacket(VarInt, 4), 123456),
     )
 
     for packet, obj in options:
