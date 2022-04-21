@@ -6,6 +6,7 @@ from ..stream import *
 from ..errors import *
 from .context import *
 from .ipacket import *
+from .misc import *
 
 
 class BytesPacket(IPacket[bytes]):
@@ -37,7 +38,44 @@ class Byte(BytesPacket):
 Byte: Byte = Byte()
 
 
+class PaddedString(PacketAdapter[str, bytes]):
+    def __init__(self, size: CtxParam[int], encoding: str = "utf-8"):
+        super().__init__(PaddedPacket(BytesPacket(
+            lambda ctx: eval_ctx_param(
+                ctx.parent.get_md("expected_len", size), ctx
+            )
+        ), size))
+
+        self._encoding: str = encoding
+
+    def _modify_enc(self, obj: str, ctx: Context) -> bytes:
+        PacketObjTypeError.validate(obj, str)
+
+        if not obj.endswith("\0"):
+            obj += "\0"
+
+        try:
+            data: bytes = obj.encode(self._encoding)
+        except UnicodeError as e:
+            raise PacketEncodeError from e
+
+        ctx.set_md("expected_len", len(data))
+
+        return data
+
+    def _modify_dec(self, data: bytes, ctx: Context) -> str:
+        try:
+            obj: str = data.decode(self._encoding)
+        except UnicodeError as e:
+            raise PacketDecodeError from e
+
+        obj = obj.rstrip("\0")
+
+        return obj
+
+
 __all__ = (
     "BytesPacket",
     "Byte",
+    "PaddedString",
 )
