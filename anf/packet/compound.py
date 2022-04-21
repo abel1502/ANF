@@ -7,6 +7,7 @@ from ..stream import *
 from ..errors import *
 from .context import *
 from .ipacket import *
+from .misc import *
 
 
 class Struct(IPacket[typing.Dict[str, typing.Any]]):
@@ -83,6 +84,7 @@ class Struct(IPacket[typing.Dict[str, typing.Any]]):
     def _children_contexts_list(self, ctx: Context,
                                 obj: typing.Dict[str, typing.Any] | None = None) -> typing.Tuple[Context]:
         result: typing.List[Context] = []
+
         for field in self._fields:
             result.append(ctx.make_child(field.name, value=self._get_value_for(field, obj)))
 
@@ -97,23 +99,31 @@ class Struct(IPacket[typing.Dict[str, typing.Any]]):
         # TODO: Perhaps elaborate?
         PacketObjTypeError.validate(obj, dict)
 
-        for field, child_ctx in self._children_with_contexts(ctx):
-            value: typing.Any | None = None
+        encoded = bytearray()
 
-            if field.name is not None:
-                # TODO: Maybe raise exceptions instead?
-                value = obj.get(field.name, None)
+        for field, child_ctx in self._children_with_contexts(ctx):
+            value = self._get_value_for(field, obj)
 
             await field.encode(stream, value, child_ctx)
+
+            encoded += child_ctx.encoded
+
+        ctx.register_enc(bytes(encoded))
 
     async def _decode(self, stream: IStream, ctx: Context) -> typing.Dict[str, typing.Any]:
         result: typing.Dict[str, typing.Any] = {}
 
+        encoded = bytearray()
+
         for field, child_ctx in self._children_with_contexts(ctx):
             value = await field.decode(stream, child_ctx)
 
+            encoded += child_ctx.encoded
+
             if field.name is not None:
                 result[field.name] = value
+
+        ctx.register_enc(bytes(encoded))
 
         return result
 
@@ -143,17 +153,29 @@ class CountPrefixed(IPacket[ST]):
         count_ctx = ctx.make_child(count_field.name)
         data_ctx = ctx.make_child(data_field.name)
 
+        encoded = bytearray()
+
         await count_field.encode(stream, obj_len, count_ctx)
+        encoded += count_ctx.encoded
         await data_field.encode(stream, obj, data_ctx)
+        encoded += data_ctx.encoded
+
+        ctx.register_enc(encoded)
 
     async def _decode(self, stream: IStream, ctx: Context) -> ST:
+        encoded = bytearray()
+
         count_field = self.count_field
         count_ctx = ctx.make_child(count_field.name)
         obj_len = await count_field.decode(stream, count_ctx)
+        encoded += count_ctx.encoded
 
         data_field = self.data_field(obj_len)
         data_ctx = ctx.make_child(data_field.name)
         obj: ST = await data_field.decode(stream, data_ctx)
+        encoded += data_ctx.encoded
+
+        ctx.register_enc(encoded)
 
         if len(obj) != obj_len:
             raise PacketEncodeError("Unexpected data length")
@@ -169,11 +191,8 @@ class CountPrefixed(IPacket[ST]):
         return count_field.sizeof(count_ctx) + data_field.sizeof(data_ctx)
 
 
-T = typing.TypeVar("T")
-
-
 # TODO: Encapsulate in some sort of restreamed, perhaps?
-class SizePrefixed(IPacket):
+class SizePrefixed(IPacket[T]):
     def __init__(self, count_field: IPacket[int], data_field: IPacket[T]):
         self.size_field: IPacket[int] = count_field.renamed("size")
         self.data_field: IPacket[T] = data_field.renamed("data")
