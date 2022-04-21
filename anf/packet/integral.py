@@ -95,7 +95,7 @@ class BytesIntPacket(IPacket[int]):
         return f"{type(self).__name__}(sz={self._size}, signed={self._signed}, order={self._endianness})"
 
 
-class VarInt(IPacket):
+class VarInt(IPacket[int]):
     def __init__(self):
         pass
 
@@ -140,7 +140,7 @@ class VarInt(IPacket):
 VarInt: VarInt = VarInt()
 
 
-class ZigZag(PacketAdapter):
+class ZigZag(PacketAdapter[int, int]):
     def __init__(self):
         super().__init__(VarInt)
 
