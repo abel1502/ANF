@@ -65,6 +65,7 @@ async def main():
         (SizePrefixed(UInt8, BytesIntPacket(12, False)), 123456),
         (my_struct, my_struct_val),
         (PaddedPacket(VarInt, 4), 123456),
+        (PaddedString(32), "Привет юникоду")
     )
 
     for packet, obj in options:
