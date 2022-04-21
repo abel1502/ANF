@@ -9,6 +9,7 @@ from .context import *
 
 
 T = typing.TypeVar("T")
+U = typing.TypeVar("U")
 
 
 class IPacket(abc.ABC, typing.Generic[T]):
@@ -154,6 +155,9 @@ class IPacket(abc.ABC, typing.Generic[T]):
             return NotImplemented
         return self.renamed(other)
 
+    def __repr__(self):
+        return f"{type(self).__name__}"  # TODO: Elaborate?
+
     ########################
     # Overrideable methods #
     ########################
@@ -196,7 +200,7 @@ class PacketWrapper(IPacket[T]):
 
 
 class PacketValidator(PacketWrapper[T]):
-    def __init__(self, wrapped: IPacket):
+    def __init__(self, wrapped: IPacket[T]):
         super().__init__(wrapped)
 
     def validate(self, ctx: Context) -> None:
@@ -217,11 +221,8 @@ class PacketValidator(PacketWrapper[T]):
         pass
 
 
-U = typing.TypeVar("U")
-
-
-class PacketAdapter(PacketWrapper[T]):
-    def __init__(self, wrapped: IPacket):
+class PacketAdapter(PacketWrapper[T], typing.Generic[T, U]):
+    def __init__(self, wrapped: IPacket[T]):
         super().__init__(wrapped)
 
     async def _encode(self, stream: IStream, obj: T, ctx: Context) -> None:
