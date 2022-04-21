@@ -15,6 +15,7 @@ class Context:
         self._value: typing.Any | None = value
         self.encoded: bytes | None = None
         self.members: typing.Dict[str, Context] = {}
+        self.metadata: typing.Dict[str, typing.Any] = {}
 
     @property
     def value_or_none(self) -> typing.Any | None:
@@ -59,6 +60,13 @@ class Context:
 
     def __getattr__(self, item: str) -> typing.Any:
         return self.get_member(item)
+
+    def get_md(self, name: str, default=None) -> typing.Any:
+        return self.metadata.get(name, default)
+
+    def set_md(self, name: str, value: T) -> T:
+        self.metadata[name] = value
+        return value
 
     def make_child(self, name: str | None, value: typing.Any | None = None) -> "Context":
         """
@@ -127,6 +135,9 @@ class Path:
         self.path += other
 
         return self
+
+    def __getattr__(self, name: str) -> "Path":
+        return self / name
 
     def __call__(self, ctx: Context) -> typing.Any:
         for name in self.path:
