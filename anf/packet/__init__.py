@@ -1,1 +1,1 @@
-from . import context, ipacket, integral, bytestr, misc, compound
+from . import context, ipacket, compound, integral, bytestr, misc
