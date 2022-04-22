@@ -4,6 +4,7 @@ import io
 import math
 from anf.packet.integral import *
 from anf.packet.bytestr import *
+from anf.packet.struct import *
 from anf.packet.compound import *
 from anf.packet.ipacket import *
 from anf.packet.misc import *
@@ -35,15 +36,18 @@ def _gen_my_struct(idx: int) -> Struct:
     match idx:
         case 0:
             MyStruct = Struct(
+                magic=Const(b"ABEL"),
                 id=VarInt,
                 msg=CountPrefixed(VarInt, BytesPacket),
             )
         case 1:
             class MyStruct(metaclass=Struct):
+                magic = Const(b"ABEL")
                 id = VarInt
                 msg = CountPrefixed(VarInt, BytesPacket)
         case 2:
             MyStruct = Struct(
+                "magic" / Const(b"ABEL"),
                 "id" / VarInt,
                 "msg" / CountPrefixed(VarInt, BytesPacket),
                 NoOpPacket,  # Only this way you can add unnamed fields
@@ -63,15 +67,20 @@ async def main():
         (BytesPacket(4), b'abel'),
         (CountPrefixed(VarInt, BytesPacket), b'Abel is the best!'),
         (SizePrefixed(UInt8, BytesIntPacket(12, False)), 123456),
-        (my_struct, my_struct_val),
+        (my_struct, my_struct_val, False),
         (PaddedPacket(VarInt, 4), 123456),
         (PaddedString(32), "Привет юникоду")
     )
 
-    for packet, obj in options:
+    for option in options:
+        if len(option) == 2:
+            option = (*option, True)
+
+        packet, obj, check = option
+
         result: bool = await test(packet, obj)
 
-        if not result:
+        if check and not result:
             print("ERROR!  ^^^")
 
         print()
