@@ -1,6 +1,7 @@
 import typing
 import abc
 import asyncio
+import itertools
 import warnings
 
 from .ipacket import T
@@ -76,8 +77,16 @@ class Struct(IPacket[_StructDict]):
         self._check_field_names()
 
     def _check_field_names(self) -> None:
-        # TODO: Finish
-        warnings.warn("The field name \"{}\" conflicts with an attribute of {} and will not be visible")
+        checked_containers = (Context, Path)
+
+        bad_attrs = ((cls, dir(cls())) for cls in checked_containers)
+
+        for field, (cls, attr) in itertools.product(self._fields, bad_attrs):
+            name = field.name
+
+            if attr == name:
+                warnings.warn(f"The field name \"{name}\" conflicts with an attribute of {cls} and will "
+                              f"not be visible via its attribute lookup")
 
     @staticmethod
     def _get_value_for(field: IPacket, obj: typing.Dict[str, typing.Any] | None) -> typing.Any | None:
