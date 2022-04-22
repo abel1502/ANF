@@ -7,7 +7,7 @@ from ..stream import *
 from ..errors import *
 from .context import *
 from .ipacket import *
-from .compound import *
+from .struct import *
 
 
 class NoOpPacket(IPacket[None]):
@@ -86,10 +86,12 @@ class AutoPacket(PacketAdapter[T, T | None]):
     """
 
     def __init__(self, wrapped: IPacket[T], value: CtxParam[T],
-                 validate_enc: bool, validate_dec: bool):
+                 validate_enc: bool, validate_dec: bool,
+                 override_enc: bool = False):
         super().__init__(wrapped)
         self._value: CtxParam[typing.Any] = value
         self._validate_enc = validate_enc
+        self._override_enc = override_enc
         self._validate_dec = validate_dec
 
     def _get_value(self, ctx: Context) -> T:
@@ -103,7 +105,12 @@ class AutoPacket(PacketAdapter[T, T | None]):
 
             raise PacketEncodeError("Explicitly specified value for automatic field is invalid.")
 
-        return value
+        if not self._override_enc and obj is not None:
+            value = obj
+
+        ctx.register_val(value)
+
+        return value if self._validate_enc else obj
 
     def _modify_dec(self, obj: T, ctx: Context) -> T:
         if self._validate_dec and self._get_value(ctx) != obj:
@@ -119,14 +126,14 @@ class Const(AutoPacket[T]):
                    hasattr(value, "__call__"), "Const operates on bytes by default"
 
             from .bytestr import BytesPacket
-            wrapped = BytesPacket
+            wrapped = BytesPacket(lambda ctx: len(eval_ctx_param(value, ctx)))
 
         super().__init__(wrapped, value, True, True)
 
 
 class Default(AutoPacket[T]):
     def __init__(self, wrapped: IPacket[T], value: CtxParam[T]):
-        super().__init__(wrapped, value, False, False)
+        super().__init__(wrapped, value, False, False, True)
 
 
 class Deduced(AutoPacket[T]):
@@ -134,7 +141,7 @@ class Deduced(AutoPacket[T]):
         super().__init__(wrapped, value, True, False)
 
 
-class PaddedPacket(PacketAdapter[T, typing.Dict[str, typing.Any]], typing.Generic[T]):
+class PaddedPacket(StructAdapter[T]):
     def __init__(self, wrapped: IPacket[T], size: CtxParam[int]):
         super().__init__(Struct(
             "data" / wrapped,
@@ -144,12 +151,6 @@ class PaddedPacket(PacketAdapter[T, typing.Dict[str, typing.Any]], typing.Generi
 
         self._size = size
 
-    def _modify_enc(self, obj: T, ctx: Context) -> typing.Dict[str, typing.Any]:
-        return {"data": obj}
-
-    def _modify_dec(self, obj: typing.Dict[str, typing.Any], ctx: Context) -> T:
-        return obj["data"]
-
     def _sizeof(self, ctx: Context) -> int:
         return eval_ctx_param(self._size, ctx)
 
@@ -158,4 +159,10 @@ __all__ = (
     "NoOpPacket",
     "Padding",
     "PaddedPacket",
+    "Virtual",
+    "AutoPacket",
+    "Const",
+    "Default",
+    "Deduced",
 )
+
