@@ -28,7 +28,7 @@ class Context:
     @property
     def value(self) -> typing.Any:
         if self._value is None:
-            raise AttributeError("Value not yet set")
+            raise ValueError("Value not yet set")
 
         return self._value
 
@@ -90,6 +90,9 @@ class Context:
         self.encoded = data
         return data
 
+    def __repr__(self) -> str:
+        return f"Context(val={self.value_or_none}, enc={self.encoded}, {self.members}, md={self.metadata})"
+
 
 # TODO: Perhaps rework to be more convenient
 class Path:
@@ -109,18 +112,35 @@ class Path:
         self._encoded: bool = encoded
         self._or_none: bool = or_none
 
-    def encoded(self, value: bool = True):
-        self._encoded = value
+    def __copy__(self) -> "Path":
+        return Path(self.path, encoded=self._encoded, or_none=self._or_none)
 
-    def or_none(self, value: bool = True):
-        self._or_none = value
+    @property
+    def encoded(self):
+        copy = self.__copy__()
+        copy._encoded = True
+        return copy
+
+    # @property
+    # def value(self):
+    #     """
+    #     Does nothing, but one might find it declarative
+    #     """
+    #
+    #     return self
+
+    @property
+    def or_none(self):
+        copy = self.__copy__()
+        copy._or_none = True
+        return copy
 
     @staticmethod
     def _split_path(path: str) -> list[str]:
         return path.split("/")
 
     def __truediv__(self, other: typing.Any) -> "Path":
-        copy = Path(self.path, encoded=self._encoded, or_none=self._or_none)
+        copy = self.__copy__()
 
         copy /= other
 
