@@ -12,6 +12,61 @@ from .struct import *
 from .misc import *
 
 
+class Transformed(PacketWrapper[T]):
+    def __init__(self, wrapped: IPacket[T],
+                 dec_size: CtxParam[int] | None = None,
+                 enc_size: CtxParam[int] | None = None,
+                 dec_func: typing.Callable[[bytes], bytes] = lambda x: x,
+                 enc_func: typing.Callable[[bytes], bytes] = lambda x: x):
+        super().__init__(wrapped)
+        self._dec_size: CtxParam[int] | None = dec_size
+        self._enc_size: CtxParam[int] | None = enc_size
+        self._dec_func: typing.Callable[[bytes], bytes] = dec_func
+        self._enc_func: typing.Callable[[bytes], bytes] = enc_func
+
+    def _get_dec_size(self, ctx: Context) -> int | None:
+        dec_size = self._dec_size
+        if dec_size is None:
+            return None
+        return eval_ctx_param(dec_size, ctx)
+
+    def _get_enc_size(self, ctx: Context) -> int | None:
+        enc_size = self._enc_size
+        if enc_size is None:
+            return None
+        return eval_ctx_param(enc_size, ctx)
+
+    async def _encode(self, stream: IStream, obj: T, ctx: Context) -> None:
+        substream = BytesStream()
+
+        await self.wrapped.encode(substream, obj, ctx)
+
+        await stream.send(substream.get_data())
+
+    async def _decode(self, stream: IStream, ctx: Context) -> T:
+        data: bytes = await stream.recv(self.sizeof(ctx))
+
+        substream = BytesStream(data)
+
+        return self.wrapped.decode(substream, ctx)
+
+    def _sizeof(self, ctx: Context) -> int:
+        dec_size = self._get_dec_size(ctx)
+        enc_size = self._get_enc_size(ctx)
+
+        cnt_nones = (dec_size is None) + (enc_size is None)
+
+        sizeable: bool = (cnt_nones == 1) or \
+                         (cnt_nones == 0 and dec_size == enc_size)
+
+        if sizeable:
+            return enc_size or dec_size
+
+        # In case it was already encoded.
+        # TODO: Maybe fail sometimes?
+        return super()._sizeof(ctx)
+
+
 ST = typing.TypeVar("ST", bound=typing.Sized)
 
 
@@ -65,6 +120,7 @@ class SizePrefixed(IPacket[T]):
 
 
 __all__ = (
+    "Transformed",
     "CountPrefixed",
     "SizePrefixed",
 )
