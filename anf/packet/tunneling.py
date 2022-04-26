@@ -86,11 +86,8 @@ class SizePrefixed(StructAdapter[T]):
         ))
 
 
+# TODO: Imporve to ease work with the surrounding struct as a whole
 class Checksum(PacketWrapper[T | None]):
-    """
-    Attention: This field often demands being postponed
-    """
-
     def __init__(self, wrapped: IPacket[T | None],
                  hash_func: typing.Callable[[bytes], T | None],
                  data: CtxParam[bytes]):
