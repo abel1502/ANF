@@ -115,7 +115,8 @@ class Struct(IPacket[_StructDict]):
         return zip(self._fields, self._children_contexts_list(ctx, obj))
 
     async def _build_with_priorities(self, ctx: Context, obj: _StructDict) -> bytes:
-        result: typing.List[bytes] = [b''] * len(self._fields)
+        encoded: typing.List[bytes] = [b''] * len(self._fields)
+        ctx.set_md("enc_partial", encoded)
 
         for (i, (field, child_ctx)) in sorted(enumerate(
                 self._children_with_contexts(ctx, obj)
@@ -123,21 +124,22 @@ class Struct(IPacket[_StructDict]):
             substream = BytesStream()
             value = self._get_value_for(field, obj)
             await field.encode(substream, value, child_ctx)
-            result[i] = substream.get_data()
+            encoded[i] = substream.get_data()
 
-        return b''.join(result)
+        return b''.join(encoded)
 
     async def _encode_optimized(self, stream: IStream, obj: _StructDict, ctx: Context) -> None:
-        encoded = bytearray()
+        encoded: typing.List[bytes] = [b''] * len(self._fields)
+        ctx.set_md("enc_partial", encoded)
 
         for field, child_ctx in self._children_with_contexts(ctx, obj):
             value = self._get_value_for(field, obj)
 
             await field.encode(stream, value, child_ctx)
 
-            encoded += child_ctx.encoded
+            encoded.append(child_ctx.encoded)
 
-        ctx.register_enc(bytes(encoded))
+        ctx.register_enc(b''.join(encoded))
 
     async def _encode(self, stream: IStream, obj: _StructDict, ctx: Context) -> None:
         # TODO: Perhaps elaborate?
@@ -153,17 +155,18 @@ class Struct(IPacket[_StructDict]):
     async def _decode(self, stream: IStream, ctx: Context) -> _StructDict:
         result: _StructDict = {}
 
-        encoded = bytearray()
+        encoded: typing.List[bytes] = [b''] * len(self._fields)
+        ctx.set_md("enc_partial", encoded)
 
         for field, child_ctx in self._children_with_contexts(ctx):
             value = await field.decode(stream, child_ctx)
 
-            encoded += child_ctx.encoded
+            encoded.append(child_ctx.encoded)
 
             if field.name is not None:
                 result[field.name] = value
 
-        ctx.register_enc(bytes(encoded))
+        ctx.register_enc(b''.join(encoded))
 
         return result
 
