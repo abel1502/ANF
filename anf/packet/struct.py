@@ -18,7 +18,7 @@ class Struct(IPacket[_StructDict]):
     @typing.overload
     def __init__(self, name: str,
                  bases: typing.Tuple[typing.Type | "Struct"],
-                 fields: typing.Dict[str, typing.Any]):
+                 fields: _StructDict):
         """
         The metaclass-compatible constructor
         """
@@ -47,7 +47,7 @@ class Struct(IPacket[_StructDict]):
         if len(args) == 3 and isinstance(args[1], tuple):
             name: str
             bases: typing.Tuple[typing.Type | "Struct"]
-            fields: typing.Dict[str, typing.Any]
+            fields: _StructDict
 
             name, bases, fields = args
 
@@ -89,7 +89,7 @@ class Struct(IPacket[_StructDict]):
                               f"not be visible via its attribute lookup")
 
     @staticmethod
-    def _get_value_for(field: IPacket, obj: typing.Dict[str, typing.Any] | None) -> typing.Any | None:
+    def _get_value_for(field: IPacket, obj: _StructDict | None) -> typing.Any | None:
         if not obj:  # Both for None and {}
             return None
 
@@ -100,7 +100,7 @@ class Struct(IPacket[_StructDict]):
         return obj.get(name, None)
 
     def _children_contexts_list(self, ctx: Context,
-                                obj: typing.Dict[str, typing.Any] | None = None) -> typing.Tuple[Context]:
+                                obj: _StructDict | None = None) -> typing.Tuple[Context]:
         result: typing.List[Context] = []
 
         for field in self._fields:
@@ -110,14 +110,24 @@ class Struct(IPacket[_StructDict]):
         return tuple(result)
 
     def _children_with_contexts(self, ctx: Context,
-                                obj: typing.Dict[str, typing.Any] | None = None) \
+                                obj: _StructDict | None = None) \
             -> typing.Iterable[typing.Tuple[IPacket, Context]]:
         return zip(self._fields, self._children_contexts_list(ctx, obj))
 
-    async def _encode(self, stream: IStream, obj: typing.Dict[str, typing.Any], ctx: Context) -> None:
-        # TODO: Perhaps elaborate?
-        PacketObjTypeError.validate(obj, dict)
+    async def _build_with_priorities(self, ctx: Context, obj: _StructDict) -> bytes:
+        result: typing.List[bytes] = [b''] * len(self._fields)
 
+        for (i, (field, child_ctx)) in sorted(enumerate(
+                self._children_with_contexts(ctx, obj)
+        ), key=lambda x: x[1][0].postpone_level):
+            substream = BytesStream()
+            value = self._get_value_for(field, obj)
+            await field.encode(substream, value, child_ctx)
+            result[i] = substream.get_data()
+
+        return b''.join(result)
+
+    async def _encode_optimized(self, stream: IStream, obj: _StructDict, ctx: Context) -> None:
         encoded = bytearray()
 
         for field, child_ctx in self._children_with_contexts(ctx, obj):
@@ -129,8 +139,19 @@ class Struct(IPacket[_StructDict]):
 
         ctx.register_enc(bytes(encoded))
 
-    async def _decode(self, stream: IStream, ctx: Context) -> typing.Dict[str, typing.Any]:
-        result: typing.Dict[str, typing.Any] = {}
+    async def _encode(self, stream: IStream, obj: _StructDict, ctx: Context) -> None:
+        # TODO: Perhaps elaborate?
+        PacketObjTypeError.validate(obj, dict)
+
+        if all(field.postpone_level == 0 for field in self._fields):
+            return await self._encode_optimized(stream, obj, ctx)
+
+        data: bytes = await self._build_with_priorities(ctx, obj)
+        await stream.send(data)
+        ctx.register_enc(data)
+
+    async def _decode(self, stream: IStream, ctx: Context) -> _StructDict:
+        result: _StructDict = {}
 
         encoded = bytearray()
 
