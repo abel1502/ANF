@@ -38,19 +38,18 @@ def _gen_my_struct(idx: int) -> Struct:
             MyStruct = Struct(
                 magic=Const(b"ABEL"),
                 id=VarInt,
-                msg=CountPrefixed(VarInt, BytesPacket),
+                msg=CString(),
             )
         case 1:
             class MyStruct(metaclass=Struct):
                 magic = Const(b"ABEL")
                 id = VarInt
-                msg = CountPrefixed(VarInt, BytesPacket)
+                msg = CString()
         case 2:
             MyStruct = Struct(
-                "magic" / Const(b"ABEL"),
+                Const(b"ABEL"),  # Only this way you can add unnamed fields
                 "id" / VarInt,
-                "msg" / CountPrefixed(VarInt, BytesPacket),
-                NoOpPacket,  # Only this way you can add unnamed fields
+                "msg" / CString(),
             )
         case _:
             assert False, "Wrong idx"
@@ -59,17 +58,21 @@ def _gen_my_struct(idx: int) -> Struct:
 
 async def main():
     my_struct = _gen_my_struct(2)
-    my_struct_val = dict(id=123, msg=b"Woah, structs too?!")
+    my_struct_val = dict(id=123, msg="Woah, structs too?!")
 
     options = (
         (VarInt, 0),
         (ZigZag, 12345678),
         (BytesPacket(4), b'abel'),
+        (BytesIntPacket(12, False), 123456),
         (CountPrefixed(VarInt, BytesPacket), b'Abel is the best!'),
-        (SizePrefixed(UInt8, BytesIntPacket(12, False)), 123456),
+        (SizePrefixed(UInt8, GreedyBytesPacket), b"Indeed he is!"),
         (my_struct, my_struct_val, False),
         (PaddedPacket(VarInt, 4), 123456),
-        (PaddedString(32), "Привет юникоду")
+        (PaddedString(32), "Привет юникоду"),
+        (PaddedString(4), "ABEL"),
+        (CString(), "Привет юникоду 2: Нуль-Терминатор"),
+        (PascalString(VarInt), "This time it's size-prefixed!")
     )
 
     for option in options:
