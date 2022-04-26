@@ -170,6 +170,15 @@ class Deduced(AutoPacket[T]):
         super().__init__(wrapped, value, True, False)
 
 
+class Check(PacketValidator[None]):
+    def __init__(self, predicate: CtxParam[bool]):
+        super().__init__(NoOpPacket)
+        self._pred = predicate
+
+    def _validate(self, ctx: Context) -> bool:
+        return eval_ctx_param(self._pred, ctx)
+
+
 __all__ = (
     "NoOpPacket",
     "Padding",
@@ -180,5 +189,6 @@ __all__ = (
     "Const",
     "Default",
     "Deduced",
+    "Check",
 )
 
