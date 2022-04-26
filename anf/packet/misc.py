@@ -10,6 +10,7 @@ from .ipacket import *
 from .struct import *
 
 
+@IPacket.singleton
 class NoOpPacket(IPacket[None]):
     def __init__(self):
         pass
@@ -25,7 +26,7 @@ class NoOpPacket(IPacket[None]):
         return 0
 
 
-NoOpPacket: NoOpPacket = NoOpPacket()
+NoOpPacket: NoOpPacket
 
 
 class Padding(IPacket):

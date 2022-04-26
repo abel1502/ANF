@@ -95,6 +95,7 @@ class BytesIntPacket(IPacket[int]):
         return f"{type(self).__name__}(sz={self._size}, signed={self._signed}, order={self._endianness})"
 
 
+@IPacket.singleton
 class VarInt(IPacket[int]):
     def __init__(self):
         pass
@@ -137,9 +138,10 @@ class VarInt(IPacket[int]):
         return f"{type(self).__name__}"
 
 
-VarInt: VarInt = VarInt()
+VarInt: VarInt
 
 
+@IPacket.singleton
 class ZigZag(PacketAdapter[int, int]):
     def __init__(self):
         super().__init__(VarInt)
@@ -162,7 +164,7 @@ class ZigZag(PacketAdapter[int, int]):
         return f"{type(self).__name__}"
 
 
-ZigZag: ZigZag = ZigZag()
+ZigZag: ZigZag
 
 
 def _create_int_types() -> typing.Dict[str, PyStructPacket[int] | typing.Tuple[str, ...]]:
@@ -230,8 +232,8 @@ Float:  PyStructPacket[float]
 Double: PyStructPacket[float]
 
 # (These are singletons, and this is here to help PyCharm understand it)
-VarInt: type(VarInt)
-ZigZag: type(ZigZag)
+# VarInt: type(VarInt)
+# ZigZag: type(ZigZag)
 
 
 __all__ = (

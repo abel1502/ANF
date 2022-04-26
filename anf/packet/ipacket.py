@@ -135,12 +135,13 @@ class IPacket(abc.ABC, typing.Generic[T]):
         Returns the size of the struct, if it is constant-size.
 
         :param ctx: The current context, if present
-        :raises errors.NotConstSizeable: if the packet's size depends on its contents
+        :raises errors.NotSizeableError: if the packet's size depends on its contents
         """
 
         if ctx is None:
             ctx = Context()
 
+        # TODO: Catch KeyError's and transform them to NotSizeableError
         return self._sizeof(ctx)
 
     def renamed(self, name: str) -> "RenamedPacket":
@@ -157,6 +158,10 @@ class IPacket(abc.ABC, typing.Generic[T]):
 
     def __repr__(self):
         return f"{type(self).__name__}"  # TODO: Elaborate?
+
+    @staticmethod
+    def singleton(cls: typing.Type[U]) -> U:
+        return cls()
 
     ########################
     # Overrideable methods #

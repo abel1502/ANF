@@ -2,6 +2,7 @@ import typing
 import abc
 import asyncio
 
+from .ipacket import T
 from ..stream import *
 from ..errors import *
 from .context import *
@@ -28,6 +29,21 @@ class BytesPacket(IPacket[bytes]):
         return eval_ctx_param(self._size, ctx)
 
 
+@IPacket.singleton
+class GreedyBytesPacket(IPacket[bytes]):
+    def __init__(self):
+        pass
+
+    async def _encode(self, stream: IStream, obj: bytes, ctx: Context) -> None:
+        PacketObjTypeError.validate(obj, bytes)
+
+        await stream.send(ctx.register_enc(obj))
+
+    async def _decode(self, stream: IStream, ctx: Context) -> bytes:
+        return ctx.register_enc(await stream.recv())
+
+
+@IPacket.singleton
 class Byte(BytesPacket):
     def __init__(self):
         super().__init__(1)
@@ -35,7 +51,7 @@ class Byte(BytesPacket):
     # TODO: Special __repr__
 
 
-Byte: Byte = Byte()
+Byte: Byte
 
 
 class PaddedString(PacketAdapter[str, bytes]):
@@ -76,6 +92,7 @@ class PaddedString(PacketAdapter[str, bytes]):
 
 __all__ = (
     "BytesPacket",
+    "GreedyBytesPacket",
     "Byte",
     "PaddedString",
 )
