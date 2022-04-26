@@ -5,7 +5,7 @@ import math
 from anf.packet.integral import *
 from anf.packet.bytestr import *
 from anf.packet.struct import *
-from anf.packet.compound import *
+from anf.packet.tunneling import *
 from anf.packet.ipacket import *
 from anf.packet.misc import *
 from anf.packet.context import *
