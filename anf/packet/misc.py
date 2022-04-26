@@ -126,8 +126,8 @@ class Const(AutoPacket[T]):
             assert isinstance(value, bytes) or \
                    hasattr(value, "__call__"), "Const operates on bytes by default"
 
-            from .bytestr import BytesPacket
-            wrapped = BytesPacket(lambda ctx: len(eval_ctx_param(value, ctx)))
+            from .bytestr import Bytes
+            wrapped = Bytes(lambda ctx: len(eval_ctx_param(value, ctx)))
 
         super().__init__(wrapped, value, True, True)
 
@@ -142,7 +142,7 @@ class Deduced(AutoPacket[T]):
         super().__init__(wrapped, value, True, False)
 
 
-class PaddedPacket(StructAdapter[T]):
+class Padded(StructAdapter[T]):
     def __init__(self, wrapped: IPacket[T], size: CtxParam[int]):
         super().__init__(Struct(
             "data" / wrapped,
@@ -159,7 +159,7 @@ class PaddedPacket(StructAdapter[T]):
 __all__ = (
     "NoOpPacket",
     "Padding",
-    "PaddedPacket",
+    "Padded",
     "Virtual",
     "AutoPacket",
     "Const",

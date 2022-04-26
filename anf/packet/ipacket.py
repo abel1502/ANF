@@ -144,11 +144,11 @@ class IPacket(abc.ABC, typing.Generic[T]):
         # TODO: Catch KeyError's and transform them to NotSizeableError
         return self._sizeof(ctx)
 
-    def renamed(self, name: str) -> "RenamedPacket":
-        return RenamedPacket.create(self, name=name)
+    def renamed(self, name: str) -> "Renamed":
+        return Renamed.create(self, name=name)
 
-    def postponed(self, level: int = 1) -> "RenamedPacket":
-        return RenamedPacket.create(self, postpone_level=level)
+    def postponed(self, level: int = 1) -> "Renamed":
+        return Renamed.create(self, postpone_level=level)
 
     @property
     def name(self) -> str | None:
@@ -158,7 +158,7 @@ class IPacket(abc.ABC, typing.Generic[T]):
     def postpone_level(self) -> int:
         return 0
 
-    def __rtruediv__(self, other: str) -> "RenamedPacket":
+    def __rtruediv__(self, other: str) -> "Renamed":
         if not isinstance(other, str):
             return NotImplemented
         return self.renamed(other)
@@ -256,7 +256,7 @@ class PacketAdapter(PacketWrapper[T], typing.Generic[T, U]):
         pass
 
 
-class RenamedPacket(PacketWrapper):
+class Renamed(PacketWrapper):
     def __init__(self, wrapped: IPacket):
         super().__init__(wrapped)
 
@@ -266,9 +266,9 @@ class RenamedPacket(PacketWrapper):
     @staticmethod
     def create(wrapped: IPacket,
                name: str | None = None,
-               postpone_level: int | None = None) -> "RenamedPacket":
-        if not isinstance(wrapped, RenamedPacket):
-            return RenamedPacket.create(RenamedPacket(wrapped), name=name, postpone_level=postpone_level)
+               postpone_level: int | None = None) -> "Renamed":
+        if not isinstance(wrapped, Renamed):
+            return Renamed.create(Renamed(wrapped), name=name, postpone_level=postpone_level)
 
         if name is not None:
             wrapped._name = name
@@ -288,7 +288,7 @@ class RenamedPacket(PacketWrapper):
         return self._postpone_level
 
 
-def postponed(wrapped: IPacket, level: int = 1) -> "RenamedPacket":
+def postponed(wrapped: IPacket, level: int = 1) -> "Renamed":
     return wrapped.postponed(level)
 
 
@@ -301,6 +301,6 @@ __all__ = (
     "PacketWrapper",
     "PacketValidator",
     "PacketAdapter",
-    "RenamedPacket",
+    "Renamed",
     "postponed",
 )

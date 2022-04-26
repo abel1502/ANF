@@ -14,7 +14,7 @@ from .ipacket import *
 IntegralT = typing.TypeVar("IntegralT", bool, int, float)
 
 
-class PyStructPacket(IPacket[IntegralT]):
+class PyStruct(IPacket[IntegralT]):
     def __init__(self, fmt: str, endianness: str = "!"):
         assert fmt in "bB?hHiIlLqQnNefd"
         assert endianness in "@=<>!"
@@ -55,7 +55,7 @@ class PyStructPacket(IPacket[IntegralT]):
         return f"{type(self).__name__}({self._struct.format})"
 
 
-class BytesIntPacket(IPacket[int]):
+class BytesInt(IPacket[int]):
     def __init__(self, size: CtxParam[int], signed: bool, endianness: typing.Literal["!", "<", ">"] = "!"):
         assert endianness in "!><"
 
@@ -167,7 +167,7 @@ class ZigZag(PacketAdapter[int, int]):
 ZigZag: ZigZag
 
 
-def _create_int_types() -> typing.Dict[str, PyStructPacket[int] | typing.Tuple[str, ...]]:
+def _create_int_types() -> typing.Dict[str, PyStruct[int] | typing.Tuple[str, ...]]:
     _sz_to_struct = {8: "b", 16: "h", 32: "i", 64: "q"}
     _endian_to_struct = {"l": "<", "b": ">", "": "!"}  # Default is network, i.e. big
 
@@ -182,7 +182,7 @@ def _create_int_types() -> typing.Dict[str, PyStructPacket[int] | typing.Tuple[s
             signed="" if signed else "U", size=size, endian=endian
         )
 
-        integral_type = PyStructPacket(fmt, _endian_to_struct[endian])
+        integral_type = PyStruct(fmt, _endian_to_struct[endian])
         integral_type.__repr__ = lambda self: f"{type(self).__name__}"
         integral_type.__call__ = lambda self: self
 
@@ -196,40 +196,40 @@ def _create_int_types() -> typing.Dict[str, PyStructPacket[int] | typing.Tuple[s
 globals().update(_create_int_types())
 
 
-Half = PyStructPacket("e")
-Float = PyStructPacket("f")
-Double = PyStructPacket("d")
+Half = PyStruct("e")
+Float = PyStruct("f")
+Double = PyStruct("d")
 
 
 # Type hints for the above code
-Int8l:   PyStructPacket[int]
-Int8b:   PyStructPacket[int]
-Int8:    PyStructPacket[int]
-UInt8l:  PyStructPacket[int]
-UInt8b:  PyStructPacket[int]
-UInt8:   PyStructPacket[int]
-Int16l:  PyStructPacket[int]
-Int16b:  PyStructPacket[int]
-Int16:   PyStructPacket[int]
-UInt16l: PyStructPacket[int]
-UInt16b: PyStructPacket[int]
-UInt16:  PyStructPacket[int]
-Int32l:  PyStructPacket[int]
-Int32b:  PyStructPacket[int]
-Int32:   PyStructPacket[int]
-UInt32l: PyStructPacket[int]
-UInt32b: PyStructPacket[int]
-UInt32:  PyStructPacket[int]
-Int64l:  PyStructPacket[int]
-Int64b:  PyStructPacket[int]
-Int64:   PyStructPacket[int]
-UInt64l: PyStructPacket[int]
-UInt64b: PyStructPacket[int]
-UInt64:  PyStructPacket[int]
+Int8l:   PyStruct[int]
+Int8b:   PyStruct[int]
+Int8:    PyStruct[int]
+UInt8l:  PyStruct[int]
+UInt8b:  PyStruct[int]
+UInt8:   PyStruct[int]
+Int16l:  PyStruct[int]
+Int16b:  PyStruct[int]
+Int16:   PyStruct[int]
+UInt16l: PyStruct[int]
+UInt16b: PyStruct[int]
+UInt16:  PyStruct[int]
+Int32l:  PyStruct[int]
+Int32b:  PyStruct[int]
+Int32:   PyStruct[int]
+UInt32l: PyStruct[int]
+UInt32b: PyStruct[int]
+UInt32:  PyStruct[int]
+Int64l:  PyStruct[int]
+Int64b:  PyStruct[int]
+Int64:   PyStruct[int]
+UInt64l: PyStruct[int]
+UInt64b: PyStruct[int]
+UInt64:  PyStruct[int]
 
-Half:   PyStructPacket[float]
-Float:  PyStructPacket[float]
-Double: PyStructPacket[float]
+Half:   PyStruct[float]
+Float:  PyStruct[float]
+Double: PyStruct[float]
 
 # (These are singletons, and this is here to help PyCharm understand it)
 # VarInt: type(VarInt)
@@ -237,8 +237,8 @@ Double: PyStructPacket[float]
 
 
 __all__ = (
-    "PyStructPacket",
-    "BytesIntPacket",
+    "PyStruct",
+    "BytesInt",
     *_all_int_types,
     "VarInt", "ZigZag",
     "Half", "Float", "Double",

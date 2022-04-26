@@ -12,7 +12,7 @@ from .tunneling import *
 from .misc import *
 
 
-class BytesPacket(IPacket[bytes]):
+class Bytes(IPacket[bytes]):
     def __init__(self, size: CtxParam[int]):
         self._size = size
 
@@ -32,7 +32,7 @@ class BytesPacket(IPacket[bytes]):
 
 
 @IPacket.singleton
-class GreedyBytesPacket(IPacket[bytes]):
+class GreedyBytes(IPacket[bytes]):
     def __init__(self):
         pass
 
@@ -45,11 +45,11 @@ class GreedyBytesPacket(IPacket[bytes]):
         return ctx.register_enc(await stream.recv())
 
 
-GreedyBytesPacket: GreedyBytesPacket
+GreedyBytes: GreedyBytes
 
 
 @IPacket.singleton
-class Byte(BytesPacket):
+class Byte(Bytes):
     def __init__(self):
         super().__init__(1)
 
@@ -61,7 +61,7 @@ Byte: Byte
 
 class PaddedString(PacketAdapter[str, bytes]):
     def __init__(self, size: CtxParam[int], encoding: str = "utf-8"):
-        super().__init__(PaddedPacket(BytesPacket(
+        super().__init__(Padded(Bytes(
             lambda ctx: eval_ctx_param(
                 ctx.parent.get_md("expected_len", size), ctx
             )
@@ -142,9 +142,9 @@ class CString(IPacket[str]):
         return "".join(result).rstrip("\0")
 
 
-class GreedyStringPacket(PacketAdapter[str, bytes]):
+class GreedyString(PacketAdapter[str, bytes]):
     def __init__(self, encoding: str = "utf-8"):
-        super().__init__(GreedyBytesPacket)
+        super().__init__(GreedyBytes)
 
         self._encoding: str = encoding
 
@@ -174,16 +174,15 @@ class GreedyStringPacket(PacketAdapter[str, bytes]):
 
 class PascalString(PacketWrapper[str]):
     def __init__(self, size_field: IPacket[int], encoding: str = "utf-8"):
-        super().__init__(SizePrefixed(size_field, GreedyStringPacket(encoding)))
-
+        super().__init__(SizePrefixed(size_field, GreedyString(encoding)))
 
 
 __all__ = (
-    "BytesPacket",
-    "GreedyBytesPacket",
+    "Bytes",
+    "GreedyBytes",
     "Byte",
     "PaddedString",
     "CString",
-    "GreedyStringPacket",
+    "GreedyString",
     "PascalString",
 )
