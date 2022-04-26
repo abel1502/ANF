@@ -32,6 +32,10 @@ async def test(packet: IPacket[T], obj: T, verbose: bool = True) -> bool:
     return obj == dec
 
 
+def _hash_sum8(data: bytes) -> int:
+    return sum(data) % 256
+
+
 def _gen_my_struct() -> Struct:
     """
     MyStruct = Struct(
@@ -54,7 +58,7 @@ def _gen_my_struct() -> Struct:
         "id" / VarInt,
         "msg" / CString(),
         Checksum(UInt8,
-                 lambda data: sum(data) % 256,
+                 _hash_sum8,
                  this.msg.encoded)
     )
 
@@ -64,6 +68,19 @@ def _gen_my_struct() -> Struct:
 async def main():
     my_struct = _gen_my_struct()
     my_struct_val = dict(id=123, msg="Woah, structs too?!")
+
+    checksum_weird = Struct(
+        Const(b"MAGIC"),
+        postponed(Deduced(UInt8, lambda ctx: (-_hash_sum8(b''.join(ctx.parent.get_md("enc_partial")))) % 256)),
+        "data" / Bytes(10),
+        postponed(Check(lambda ctx: _hash_sum8(b''.join(ctx.parent.get_md("enc_partial"))) == 0))
+    )
+    checksum_weird_val = dict(data=b'0123456789')
+
+    print(await checksum_weird.encode_bytes(checksum_weird_val))
+    print(await checksum_weird.decode_bytes(b'MAGIC\x920123456789'))
+
+    return
 
     options = (
         (VarInt, 0),
@@ -93,6 +110,10 @@ async def main():
             print("ERROR!  ^^^")
 
         print()
+
+    # print(await my_struct.decode_bytes(
+    #     b"ABEL\x01Woah, structs too?!\x00\x54"
+    # ))
 
 
 if __name__ == "__main__":

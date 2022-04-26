@@ -195,6 +195,44 @@ def eval_ctx_param(param: CtxParam[T], ctx: Context) -> T:
     return param
 
 
+# TODO: Perhaps use events for more advanced use cases
+# P = typing.ParamSpec("P")
+# _PCallback: typing.TypeAlias = typing.Callable[P, typing.Any]
+#
+#
+# class Event(typing.Generic[P]):
+#     def __init__(self):
+#         self._subscribed: typing.List[_PCallback] = []
+#
+#     def add(self, cb: _PCallback) -> None:
+#         self._subscribed.append(cb)
+#
+#     def rem(self, cb: _PCallback) -> None:
+#         self._subscribed.remove(cb)
+#
+#     def clear(self):
+#         self._subscribed.clear()
+#
+#     def fire(self, *args: P.args, **kwargs: P.kwargs) -> None:
+#         for cb in self._subscribed:
+#             cb(*args, **kwargs)
+#
+#     def __iadd__(self, other: _PCallback):
+#         if not hasattr(other, "__call__"):
+#             return NotImplemented
+#         self.add(other)
+#         return self
+#
+#     def __isub__(self, other: _PCallback):
+#         if not hasattr(other, "__call__"):
+#             return NotImplemented
+#         self.rem(other)
+#         return self
+#
+#     def __call__(self, *args: P.args, **kwargs: P.kwargs) -> None:
+#         self.fire(*args, **kwargs)
+
+
 __all__ = (
     "Context",
     "Path",
@@ -202,4 +240,5 @@ __all__ = (
     "len_",
     "CtxParam",
     "eval_ctx_param",
+    # "Event",
 )
