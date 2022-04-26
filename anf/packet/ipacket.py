@@ -68,6 +68,31 @@ class IPacket(abc.ABC, typing.Generic[T]):
 
         return ctx.register_val(await self._decode(stream, ctx))
 
+    async def encode_bytes(self, obj: T, ctx: Context | None = None) -> bytes:
+        """
+        Encodes the packet asynchronously and returns the resulting bytes.
+        Arguments and exceptions are the same as for `encode`
+        """
+
+        stream = BytesStream()
+        await self.encode(stream, obj, ctx)
+        return stream.get_data()
+
+    async def decode_bytes(self, data: bytes, ctx: Context | None = None,
+                           completely: bool = True) -> T:
+        """
+        Decodes the packet asynchronously from the given bytes.
+        Arguments and exceptions are the same as for `decode`
+        """
+
+        stream = BytesStream(data)
+        result: T = await self.decode(stream, ctx)
+
+        if completely and not stream.at_eof():
+            raise PacketDecodeError("Unexpected trailing bytes remaining")
+
+        return result
+
     @typing.overload
     def encode_sync(self, stream: typing.BinaryIO, obj: T) -> None:
         """
@@ -92,22 +117,16 @@ class IPacket(abc.ABC, typing.Generic[T]):
 
     def encode_sync(self, *args):
         if len(args) == 1:
-            stream = io.BytesIO()
             obj = args[0]
+            coro = self.encode_bytes(obj)
         elif len(args) == 2:
             stream, obj = args
+            stream = SyncStream.create_from(stream)
+            coro = self.encode_bytes(stream, obj)
         else:
             assert False, "Unknown overload"
 
-        stream = SyncStream.create_from(stream)
-
-        asyncio.get_event_loop().run_until_complete(
-            self.encode(stream, obj)
-        )
-
-        if len(args) == 1:
-            assert isinstance(stream, BytesStream)
-            return stream.get_data()
+        return asyncio.get_event_loop().run_until_complete(coro)
 
     def decode_sync(self, stream: typing.BinaryIO | bytes, completely: bool = False) -> T:
         """
@@ -118,14 +137,20 @@ class IPacket(abc.ABC, typing.Generic[T]):
         :return: The decoded object
         """
 
+        is_bytes: bool = False
+        sync_stream: SyncStream | None = None
+
         if isinstance(stream, (bytes, bytearray, memoryview)):
-            stream = io.BytesIO(stream)
+            coro = self.decode_bytes(stream, completely=completely)
+            is_bytes = True
+        else:
+            sync_stream = SyncStream.create_from(stream)
+            coro = self.decode(sync_stream)
 
-        sync_stream: SyncStream = SyncStream.create_from(stream)
+        data = asyncio.get_event_loop().run_until_complete(coro)
 
-        data = asyncio.get_event_loop().run_until_complete(self.decode(sync_stream))
-
-        if completely and not sync_stream.at_eof():
+        # For bytes, this is already handled inside
+        if not is_bytes and completely and not sync_stream.at_eof():
             raise PacketDecodeError("Unexpected trailing bytes remaining")
 
         return data
