@@ -3,7 +3,7 @@ import abc
 import asyncio
 import warnings
 
-from .ipacket import T
+from .ipacket import T, U
 from ..stream import *
 from ..errors import *
 from .context import *
@@ -86,8 +86,20 @@ class SizePrefixed(StructAdapter[T]):
         ))
 
 
+class Checksum(PacketWrapper[T | None]):
+    """
+    Attention: This field often demands being postponed
+    """
+
+    def __init__(self, wrapped: IPacket[T | None],
+                 hash_func: typing.Callable[[bytes], T | None],
+                 data: CtxParam[bytes]):
+        super().__init__(Const(lambda ctx: hash_func(eval_ctx_param(data, ctx)), wrapped))
+
+
 __all__ = (
     "Transformed",
     "CountPrefixed",
     "SizePrefixed",
+    "Checksum",
 )

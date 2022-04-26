@@ -32,32 +32,37 @@ async def test(packet: IPacket[T], obj: T, verbose: bool = True) -> bool:
     return obj == dec
 
 
-def _gen_my_struct(idx: int) -> Struct:
-    match idx:
-        case 0:
-            MyStruct = Struct(
-                magic=Const(b"ABEL"),
-                id=VarInt,
-                msg=CString(),
-            )
-        case 1:
-            class MyStruct(metaclass=Struct):
-                magic = Const(b"ABEL")
-                id = VarInt
-                msg = CString()
-        case 2:
-            MyStruct = Struct(
-                Const(b"ABEL"),  # Only this way you can add unnamed fields
-                "id" / VarInt,
-                "msg" / CString(),
-            )
-        case _:
-            assert False, "Wrong idx"
+def _gen_my_struct() -> Struct:
+    """
+    MyStruct = Struct(
+        magic=Const(b"ABEL"),
+        id=VarInt,
+        msg=CString(),
+    )
+    """
+
+    """
+    class MyStruct(metaclass=Struct):
+        magic = Const(b"ABEL")
+        id = VarInt
+        msg = CString()
+    """
+
+    # Only this way you can add unnamed fields
+    MyStruct = Struct(
+        Const(b"ABEL"),
+        "id" / VarInt,
+        "msg" / CString(),
+        Checksum(UInt8,
+                 lambda data: sum(data) % 256,
+                 this.msg.encoded)
+    )
+
     return MyStruct
 
 
 async def main():
-    my_struct = _gen_my_struct(2)
+    my_struct = _gen_my_struct()
     my_struct_val = dict(id=123, msg="Woah, structs too?!")
 
     options = (
