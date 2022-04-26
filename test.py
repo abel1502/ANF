@@ -67,12 +67,13 @@ async def main():
         (BytesInt(12, False), 123456),
         (CountPrefixed(VarInt, Bytes), b'Abel is the best!'),
         (SizePrefixed(UInt8, GreedyBytes), b"Indeed he is!"),
-        (my_struct, my_struct_val, False),
         (Padded(VarInt, 4), 123456),
         (PaddedString(32), "Привет юникоду"),
         (PaddedString(4), "ABEL"),
         (CString(), "Привет юникоду 2: Нуль-Терминатор"),
-        (PascalString(VarInt), "This time it's size-prefixed!")
+        (PascalString(VarInt), "This time it's size-prefixed!"),
+        (Aligned(UInt16, 4), 777),
+        (my_struct, my_struct_val, False),
     )
 
     for option in options:
