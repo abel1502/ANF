@@ -81,6 +81,34 @@ class Virtual(IPacket[T]):
         return 0
 
 
+class Padded(StructAdapter[T]):
+    def __init__(self, wrapped: IPacket[T], size: CtxParam[int]):
+        super().__init__(Struct(
+            "data" / wrapped,
+            "pad_size" / Virtual(lambda ctx: self.sizeof(ctx.parent) - len(ctx.parent.data.encoded)),
+            "padding" / Padding(this.pad_size),
+        ))
+
+        self._size: CtxParam[int] = size
+
+    def _sizeof(self, ctx: Context) -> int:
+        return eval_ctx_param(self._size, ctx)
+
+
+class Aligned(StructAdapter[T]):
+    def __init__(self, wrapped: IPacket[T], alignment: CtxParam[int]):
+        super().__init__(Struct(
+            "data" / wrapped,
+            "pad_size" / Virtual(lambda ctx: (-len(ctx.parent.data.encoded)) % self._get_alignment(ctx.parent)),
+            "padding" / Padding(this.pad_size),
+        ))
+
+        self._alignment: CtxParam[int] = alignment
+
+    def _get_alignment(self, ctx: Context) -> int:
+        return eval_ctx_param(self._alignment, ctx)
+
+
 class AutoPacket(PacketAdapter[T, T | None]):
     """
     A special packet that computes its value automatically
@@ -142,25 +170,12 @@ class Deduced(AutoPacket[T]):
         super().__init__(wrapped, value, True, False)
 
 
-class Padded(StructAdapter[T]):
-    def __init__(self, wrapped: IPacket[T], size: CtxParam[int]):
-        super().__init__(Struct(
-            "data" / wrapped,
-            "pad_size" / Virtual(lambda ctx: self.sizeof(ctx.parent) - len(ctx.parent.data.encoded)),
-            "padding" / Padding(this.pad_size),
-        ))
-
-        self._size = size
-
-    def _sizeof(self, ctx: Context) -> int:
-        return eval_ctx_param(self._size, ctx)
-
-
 __all__ = (
     "NoOpPacket",
     "Padding",
-    "Padded",
     "Virtual",
+    "Padded",
+    "Aligned",
     "AutoPacket",
     "Const",
     "Default",
