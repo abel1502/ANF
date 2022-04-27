@@ -68,6 +68,9 @@ class Context:
         self.metadata[name] = value
         return value
 
+    def del_md(self, name: str) -> None:
+        del self.metadata[name]
+
     def make_child(self, name: str | None, value: typing.Any | None = None) -> "Context":
         """
         Either return the child context, or make one if it isn't yet present
@@ -97,11 +100,11 @@ class Context:
 # TODO: Perhaps rework to be more convenient
 class Path:
     def __init__(self, initial: str | typing.Iterable[str] | "Path" = (), *,
-                 encoded: bool = False, or_none: bool = False):
+                 or_none: bool = False):
         if isinstance(initial, Path):
-            # noinspection PyProtectedMember
-            encoded = initial._encoded
             initial = initial.path
+            # noinspection PyProtectedMember
+            or_none = initial._or_none
 
         if isinstance(initial, str):
             initial = self._split_path(initial)
@@ -109,17 +112,10 @@ class Path:
             initial = list(initial)
 
         self.path: typing.List[str] = initial
-        self._encoded: bool = encoded
         self._or_none: bool = or_none
 
     def __copy__(self) -> "Path":
-        return Path(self.path, encoded=self._encoded, or_none=self._or_none)
-
-    @property
-    def encoded(self):
-        copy = self.__copy__()
-        copy._encoded = True
-        return copy
+        return Path(self.path, or_none=self._or_none)
 
     # @property
     # def value(self):
@@ -134,6 +130,17 @@ class Path:
         copy = self.__copy__()
         copy._or_none = True
         return copy
+
+    def as_ctx(self, ctx: Context) -> Context | None:
+        for name in self.path:
+            get_member: typing.Callable[[str], Context | None] = \
+                ctx.get_member_or_none if self._or_none else ctx.get_member
+            ctx = get_member(name)
+
+            if ctx is None and self._or_none:
+                return None
+
+        return ctx
 
     @staticmethod
     def _split_path(path: str) -> list[str]:
@@ -160,16 +167,13 @@ class Path:
         return self / name
 
     def __call__(self, ctx: Context) -> typing.Any:
-        for name in self.path:
-            get_member: typing.Callable[[str], Context | None] = \
-                ctx.get_member_or_none if self._or_none else ctx.get_member
-            ctx = get_member(name)
+        ctx = self.as_ctx(ctx)
 
-        if self._or_none:
-            return ctx.encoded if self._encoded else ctx.value_or_none
-        if self._encoded and ctx.encoded is None:
-            raise KeyError("Field not yet encoded")
-        return ctx.encoded if self._encoded else ctx.value
+        if ctx is None:
+            assert self._or_none
+            return None
+
+        return ctx.value_or_none if self._or_none else ctx.value
 
     def __repr__(self) -> str:
         return "/".join(self.path)
@@ -183,6 +187,10 @@ def _wrap_path_func(func: typing.Callable[[typing.Any], T]) \
 this = Path("_")
 this.__repr__ = lambda self: "this" + repr(super()).split("_", 1)[1]
 len_ = _wrap_path_func(len)
+
+
+def encoded(path: Path = this) -> typing.Callable[[Context], bytes | None]:
+    return lambda ctx: path.as_ctx(ctx).encoded
 
 
 CtxParam: typing.TypeAlias = T | typing.Callable[[Context], T]
@@ -236,7 +244,9 @@ def eval_ctx_param(param: CtxParam[T], ctx: Context) -> T:
 __all__ = (
     "Context",
     "Path",
+    "encoded",
     "this",
+    "_wrap_path_func",  # TODO: ?
     "len_",
     "CtxParam",
     "eval_ctx_param",
