@@ -180,6 +180,13 @@ class AutoPacket(PacketAdapter[T, T | None]):
 
 
 class Const(AutoPacket[T]):
+    """
+    A special packet that always contains the same value (possibly context-dependent),
+    and validates in during encoding and decoding.
+
+    Note: see the note for `postpone_dec` in AutoPacket.__init__
+    """
+
     def __init__(self, value: CtxParam[T], wrapped: IPacket[T] | None = None):
         if wrapped is None:
             assert isinstance(value, bytes) or \
@@ -202,6 +209,12 @@ class Deduced(AutoPacket[T]):
 
 
 class Check(PacketValidator[None]):
+    """
+    A special packet that doesn't encode or decode anything,
+    but checks that a predicate is true upon encoding and decoding.
+    Often demands being `postpone`d.
+    """
+
     def __init__(self, predicate: CtxParam[bool]):
         super().__init__(NoOpPacket)
         self._pred = predicate
