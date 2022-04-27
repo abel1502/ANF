@@ -36,6 +36,15 @@ def _hash_sum8(data: bytes) -> int:
     return sum(data) % 256
 
 
+ByteSumZero = postponed(Checksum(
+    UInt8,
+    _hash_sum8,
+    joined_enc_partial(),
+    compute=lambda ctx, hashed: (-hashed) % 256,
+    validate=lambda ctx, value, hashed: hashed == 0
+))
+
+
 def _gen_my_struct() -> Struct:
     """
     MyStruct = Struct(
@@ -59,7 +68,7 @@ def _gen_my_struct() -> Struct:
         "msg" / CString(),
         Checksum(UInt8,
                  _hash_sum8,
-                 this.msg.encoded)
+                 encoded(this.msg))
     )
 
     return MyStruct
@@ -69,18 +78,19 @@ async def main():
     my_struct = _gen_my_struct()
     my_struct_val = dict(id=123, msg="Woah, structs too?!")
 
+    # checksum_weird = Struct(
+    #     Const(b"MAGIC"),
+    #     postponed(Deduced(UInt8, lambda ctx: (-_hash_sum8(joined_enc_partial()(ctx))) % 256)),
+    #     "data" / Bytes(10),
+    #     postponed(Check(lambda ctx: _hash_sum8(joined_enc_partial()(ctx)) == 0))
+    # )
+
     checksum_weird = Struct(
         Const(b"MAGIC"),
-        postponed(Deduced(UInt8, lambda ctx: (-_hash_sum8(b''.join(ctx.parent.get_md("enc_partial")))) % 256)),
+        ByteSumZero,
         "data" / Bytes(10),
-        postponed(Check(lambda ctx: _hash_sum8(b''.join(ctx.parent.get_md("enc_partial"))) == 0))
     )
     checksum_weird_val = dict(data=b'0123456789')
-
-    print(await checksum_weird.encode_bytes(checksum_weird_val))
-    print(await checksum_weird.decode_bytes(b'MAGIC\x920123456789'))
-
-    return
 
     options = (
         (VarInt, 0),
@@ -95,6 +105,7 @@ async def main():
         (CString(), "Привет юникоду 2: Нуль-Терминатор"),
         (PascalString(VarInt), "This time it's size-prefixed!"),
         (Aligned(UInt16, 4), 777),
+        (checksum_weird, checksum_weird_val),
         (my_struct, my_struct_val, False),
     )
 
