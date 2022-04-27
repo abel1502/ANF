@@ -145,15 +145,25 @@ class Struct(IPacket[_StructDict]):
         # TODO: Perhaps elaborate?
         PacketObjTypeError.validate(obj, dict)
 
-        if all(field.postpone_level == 0 for field in self._fields):
-            return await self._encode_optimized(stream, obj, ctx)
+        on_finish = Event[[]]()
+        ctx.set_md("on_finish", on_finish)
 
-        data: bytes = await self._build_with_priorities(ctx, obj)
-        await stream.send(data)
-        ctx.register_enc(data)
+        if all(field.postpone_level == 0 for field in self._fields):
+            await self._encode_optimized(stream, obj, ctx)
+        else:
+            data: bytes = await self._build_with_priorities(ctx, obj)
+            await stream.send(data)
+            ctx.register_enc(data)
+
+        on_finish()
+        ctx.del_md("on_finish")
+        ctx.del_md("enc_partial")
 
     async def _decode(self, stream: IStream, ctx: Context) -> _StructDict:
         result: _StructDict = {}
+
+        on_finish = Event[[]]()
+        ctx.set_md("on_finish", on_finish)
 
         encoded: typing.List[bytes] = [b''] * len(self._fields)
         ctx.set_md("enc_partial", encoded)
@@ -167,6 +177,10 @@ class Struct(IPacket[_StructDict]):
                 result[field.name] = value
 
         ctx.register_enc(b''.join(encoded))
+
+        on_finish()
+        ctx.del_md("on_finish")
+        ctx.del_md("enc_partial")
 
         return result
 
@@ -196,8 +210,18 @@ class StructAdapter(PacketAdapter[T, _StructDict], typing.Generic[T], metaclass=
         return f"{type(self).__name__}"
 
 
+def enc_partial(path: Path = this) -> typing.Callable[[Context], typing.List[bytes] | None]:
+    return lambda ctx: path.as_ctx(ctx).get_md("enc_partial")
+
+
+def joined_enc_partial(path: Path = this) -> typing.Callable[[Context], bytes | None]:
+    return lambda ctx: b''.join(enc_partial(path)(ctx))
+
+
 __all__ = (
     "Struct",
     "StructAdapter",
     "_StructDict",
+    "enc_partial",
+    "joined_enc_partial",
 )
