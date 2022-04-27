@@ -1,7 +1,6 @@
 import typing
 import abc
 import asyncio
-import warnings
 
 from .ipacket import T, U
 from ..stream import *

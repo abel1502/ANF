@@ -173,6 +173,7 @@ class IPacket(abc.ABC, typing.Generic[T]):
         return Renamed.create(self, name=name)
 
     def postponed(self, level: int = 1) -> "Renamed":
+        self._postpone(level=level)
         return Renamed.create(self, postpone_level=level)
 
     @property
@@ -214,6 +215,10 @@ class IPacket(abc.ABC, typing.Generic[T]):
         except KeyError:
             raise NotSizeableError("Packet wasn't yet encoded, and size cannot be determined")
 
+    # @abc.abstractmethod
+    def _postpone(self, level: int) -> None:
+        pass
+
 
 class PacketWrapper(IPacket[T]):
     def __init__(self, wrapped: IPacket[T]):
@@ -239,23 +244,46 @@ class PacketWrapper(IPacket[T]):
     def __repr__(self):
         return repr(self.wrapped)
 
+    def _postpone(self, level: int) -> None:
+        self.wrapped._postpone(level)
+
 
 class PacketValidator(PacketWrapper[T]):
     def __init__(self, wrapped: IPacket[T]):
         super().__init__(wrapped)
+
+        self._postpone_validation = False
 
     def validate(self, ctx: Context) -> None:
         if not self._validate(ctx):
             raise PacketInvalidError("Validation failed")
 
     async def _encode(self, stream: IStream, obj: T, ctx: Context) -> None:
-        self.validate(ctx)
+        # TODO: Revert for encode?
+        if not self._postpone_validation:
+            self.validate(ctx)
+        else:
+            on_finish: Event[[]] = ctx.parent.get_md("on_finish")
+            assert on_finish is not None
+            on_finish.add(lambda: self.validate(ctx))
+
         return await self.wrapped._encode(stream, obj, ctx)
 
     async def _decode(self, stream: IStream, ctx: Context) -> T:
         obj: T = await self.wrapped._decode(stream, ctx)
-        self.validate(ctx)
+
+        if not self._postpone_validation:
+            self.validate(ctx)
+        else:
+            ctx.register_val(obj)  # So it is already there for the validation
+            on_finish: Event[[]] = ctx.parent.get_md("on_finish")
+            assert on_finish is not None
+            on_finish.add(lambda: self.validate(ctx))
+
         return obj
+
+    def _postpone(self, level: int) -> None:
+        self._postpone_validation = True
 
     @abc.abstractmethod
     def _validate(self, ctx: Context) -> bool:

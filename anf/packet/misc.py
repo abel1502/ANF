@@ -116,12 +116,30 @@ class AutoPacket(PacketAdapter[T, T | None]):
 
     def __init__(self, wrapped: IPacket[T], value: CtxParam[T],
                  validate_enc: bool, validate_dec: bool,
-                 override_enc: bool = False):
+                 override_enc: bool = False, postpone_dec: bool = False):
+        """
+        :param wrapped: The underlying packet
+        :param value: The deduced value (optionally context-dependent)
+        :param validate_enc: Whether to check the explicitly given value
+            against the deduced one upon encoding the packet
+        :param validate_dec: Whether to check the received value
+            against the deduced one upon decoding the packet
+        :param override_enc: Whether to allow the user to override the
+            value being encoded with their own. Requires `not validate_enc`
+        :param postpone_dec: Whether to postpone the decoding check
+            until the end of parent container parsing. Requires `validate_dec`.
+            This is set automatically upon postponing the packet.
+            Note that wrapping this packet in a StructAdapter may unintentionally
+            change the moment when the validation is carried out, as well as
+            the context it is evaluated in
+        """
+
         super().__init__(wrapped)
         self._value: CtxParam[typing.Any] = value
         self._validate_enc = validate_enc
         self._override_enc = override_enc
         self._validate_dec = validate_dec
+        self._postpone_dec = postpone_dec
 
     def _get_value(self, ctx: Context) -> T:
         return eval_ctx_param(self._value, ctx)
@@ -142,10 +160,23 @@ class AutoPacket(PacketAdapter[T, T | None]):
         return value if self._validate_enc else obj
 
     def _modify_dec(self, obj: T, ctx: Context) -> T:
-        if self._validate_dec and self._get_value(ctx) != obj:
-            raise PacketDecodeError("Received value for automatic field is invalid.")
+        if self._validate_dec:
+            def validate():
+                if self._get_value(ctx) != obj:
+                    raise PacketDecodeError("Received value for automatic field is invalid.")
+
+            if self._postpone_dec:
+                on_finish: Event[[]] = ctx.parent.get_md("on_finish")
+                assert isinstance(on_finish, Event)
+                on_finish.add(validate)
+            else:
+                validate()
 
         return obj
+
+    def _postpone(self, level: int) -> None:
+        # TODO: Maybe not?
+        self._postpone_dec = True
 
 
 class Const(AutoPacket[T]):
