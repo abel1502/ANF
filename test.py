@@ -8,6 +8,7 @@ from anf.packet.struct import *
 from anf.packet.tunneling import *
 from anf.packet.ipacket import *
 from anf.packet.misc import *
+from anf.packet.repeaters import *
 from anf.packet.context import *
 from anf.stream import *
 
@@ -66,9 +67,12 @@ def _gen_my_struct() -> Struct:
         Const(b"ABEL"),
         "id" / VarInt,
         "msg" / CString(),
-        Checksum(UInt8,
-                 _hash_sum8,
-                 encoded(this.msg))
+        Checksum(
+            UInt8,
+            _hash_sum8,
+            # encoded(this.msg)
+            joined_enc_partial()
+        )
     )
 
     return MyStruct
@@ -106,6 +110,8 @@ async def main():
         (PascalString(VarInt), "This time it's size-prefixed!"),
         (Aligned(UInt16, 4), 777),
         (checksum_weird, checksum_weird_val),
+        (Array[int](UInt16, 5), [6, 8, 10, 12, 77]),
+        (CString()[3], ["Hello", "Dear", "World"]),
         (my_struct, my_struct_val, False),
     )
 
