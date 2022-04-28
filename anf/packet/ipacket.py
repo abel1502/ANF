@@ -7,6 +7,9 @@ from ..stream import *
 from ..errors import *
 from .context import *
 
+if typing.TYPE_CHECKING:
+    from .repeaters import Array
+
 
 T = typing.TypeVar("T")
 U = typing.TypeVar("U")
@@ -188,6 +191,13 @@ class IPacket(abc.ABC, typing.Generic[T]):
         if not isinstance(other, str):
             return NotImplemented
         return self.renamed(other)
+
+    def __getitem__(self, cnt: int) -> "Array[T]":
+        from .repeaters import Array
+
+        assert isinstance(cnt, int)
+
+        return Array[T](self, cnt)
 
     def __repr__(self):
         return f"{type(self).__name__}"  # TODO: Elaborate?
