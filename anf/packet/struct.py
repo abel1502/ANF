@@ -25,6 +25,9 @@ class Sequence(IPacket[_SeqList]):
     def fields(self) -> typing.Tuple[IPacket]:
         return self._fields
 
+    def __getitem__(self, item: int) -> IPacket:
+        return self._fields[item]
+
     def _children_contexts_list(self, ctx: Context, obj: _SeqList | None = None) \
             -> typing.Tuple[Context, ...]:
         result: typing.List[Context] = []
@@ -212,6 +215,19 @@ class Struct(PacketAdapter[_StructDict, _SeqList]):
         super().__init__(Sequence(*args))
 
         self._check_field_names()
+
+    @property
+    def fields(self) -> typing.Tuple[IPacket]:
+        return self.wrapped.fields
+
+    def __getitem__(self, item: str | int) -> IPacket:
+        if isinstance(item, str):
+            try:
+                item = [field.name for field in self.fields].index(item)
+            except ValueError as e:
+                raise KeyError from e
+
+        return self.wrapped[item]
 
     def _check_field_names(self) -> None:
         checked_containers = (Context, Path)
