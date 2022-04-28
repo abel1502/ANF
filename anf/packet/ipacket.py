@@ -1,7 +1,7 @@
 import asyncio
 import typing
 import abc
-import io
+import types
 
 from ..stream import *
 from ..errors import *
@@ -11,11 +11,40 @@ if typing.TYPE_CHECKING:
     from .repeaters import Array
 
 
+# TODO: Remove?
+# =============================================================
+ClsT = typing.TypeVar("ClsT")
+
+
+_mixin_guard = type("_mixin_guard", (), {})
+
+
+def mixin(cls: typing.Type[ClsT]) -> typing.Type[ClsT]:
+    wrapped = types.new_class(f"_prot_{cls.__name__}", (cls, _mixin_guard))
+
+    return typing.cast(typing.Type[ClsT], wrapped)
+
+
+def _recurse_bases(cls):
+    if _mixin_guard in cls.__bases__:
+        return
+    yield cls
+    for base in cls.__bases__:
+        yield from _recurse_bases(base)
+
+
+class SupportsMixins(abc.ABC):
+    @classmethod
+    def __subclasshook__(cls, subclass):
+        return cls in _recurse_bases(subclass)
+# =============================================================
+
+
 T = typing.TypeVar("T")
 U = typing.TypeVar("U")
 
 
-class IPacket(abc.ABC, typing.Generic[T]):
+class IPacket(SupportsMixins, typing.Generic[T]):
     """
     The base interface for a packet
 
@@ -362,6 +391,7 @@ def postponed(wrapped: IPacket, level: int = 1) -> "Renamed":
 
 
 __all__ = (
+    "mixin",
     "IPacket",
     "PacketWrapper",
     "PacketValidator",
