@@ -128,7 +128,7 @@ async def main():
         (CountPrefixedArray(VarInt, PaddedString(8)), ["I'm", "here", "again"]),
         (some_enum, some_enum.a | some_enum.secret),
         (Mapping[str, int](VarInt, enc_map={"Hello": 1, "Goodbye": -1, "": 0}), "Hello"),
-        (Discriminated(UInt8, {0: my_struct, 1: PaddedString(8)}), (1, "Hi!!!")),
+        (Discriminated[int](UInt8, {0: my_struct, 1: PaddedString(8)}), (1, "Hi!!!")),
         (my_struct, my_struct_val, False),
     )
 

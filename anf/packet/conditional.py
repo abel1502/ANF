@@ -54,21 +54,21 @@ class Conditional(Dynamic[T | U], typing.Generic[T, U]):
 
 
 # TODO: Somehow account for the generic?
-class Discriminated(StructAdapter[typing.Tuple[int | IPacket, typing.Any]]):
-    def __init__(self, type_field: IPacket[int], cases: typing.Mapping[int, IPacket]):
+class Discriminated(StructAdapter[typing.Tuple[T, typing.Any]], typing.Generic[T]):
+    def __init__(self, type_field: IPacket[T], cases: typing.Mapping[T, IPacket]):
         super().__init__(Struct(
             # TODO: Perhaps go back to using Mapping, but it seems troublesome
             "type" / type_field,
             "value" / Dynamic(lambda ctx: cases[ctx.parent.type.value]),
         ), master_field="value")
 
-    def _modify_enc(self, obj: typing.Tuple[int | IPacket, typing.Any], ctx: Context) -> _StructDict:
+    def _modify_enc(self, obj: typing.Tuple[T, typing.Any], ctx: Context) -> _StructDict:
         if not isinstance(obj, tuple) or len(obj) != 2:
             raise PacketObjTypeError(obj, tuple)
 
         return dict(type=obj[0], value=obj[1])
 
-    def _modify_dec(self, obj: _StructDict, ctx: Context) -> T:
+    def _modify_dec(self, obj: _StructDict, ctx: Context) -> typing.Tuple[T, typing.Any]:
         return (obj["type"], obj["value"])
 
 
