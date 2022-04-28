@@ -2,6 +2,7 @@ import typing
 import asyncio
 import io
 import math
+import enum
 from anf.packet.integral import *
 from anf.packet.bytestr import *
 from anf.packet.struct import *
@@ -9,6 +10,7 @@ from anf.packet.tunneling import *
 from anf.packet.ipacket import *
 from anf.packet.misc import *
 from anf.packet.repeaters import *
+from anf.packet.mappings import *
 from anf.packet.context import *
 from anf.stream import *
 
@@ -62,11 +64,12 @@ def _gen_my_struct() -> Struct:
         msg = CString()
     """
 
-    # Only this way you can add unnamed fields
+    # This way and with metaclass and "_" you can add unnamed fields
     MyStruct = Struct(
         Const(b"ABEL"),
         "id" / VarInt,
         "msg" / CString(),
+        "is_cool" / Default(Flag, True),
         Checksum(
             UInt8,
             _hash_sum8,
@@ -89,12 +92,17 @@ async def main():
     #     postponed(Check(lambda ctx: _hash_sum8(joined_enc_partial()(ctx)) == 0))
     # )
 
-    checksum_weird = Struct(
-        Const(b"MAGIC"),
-        ByteSumZero,
-        "data" / Bytes(10),
-    )
+    # noinspection PyPep8Naming
+    class checksum_weird(metaclass=Struct):
+        _ = Const(b"MAGIC")
+        _ = ByteSumZero
+        data = Bytes(10)
     checksum_weird_val = dict(data=b'0123456789')
+
+    class TestEnum(enum.Enum):
+        a = 1
+        b = 2
+        secret = 0xff
 
     options = (
         (VarInt, 0),
@@ -113,6 +121,7 @@ async def main():
         (Array[int](UInt16, 5), [6, 8, 10, 12, 77]),
         (CString()[3], ["Hello", "Dear", "World"]),
         (CountPrefixedArray(VarInt, PaddedString(8)), ["I'm", "here", "again"]),
+        (Enum(UInt8, TestEnum), TestEnum.b),
         (my_struct, my_struct_val, False),
     )
 

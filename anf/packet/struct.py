@@ -97,7 +97,7 @@ class Sequence(IPacket[_SeqList]):
         ctx.del_md("enc_partial")
 
     async def _decode(self, stream: IStream, ctx: Context) -> _SeqList:
-        result: _SeqList = []
+        result: typing.List[typing.Any] = []
 
         on_finish = Event[[]]()
         ctx.set_md("on_finish", on_finish)
@@ -127,16 +127,42 @@ class Sequence(IPacket[_SeqList]):
         return result
 
 
+class _StructMetaLocals(dict):
+    def __init__(self):
+        super().__init__()
+
+        self.fields: typing.List[IPacket] = []
+
+    def __setitem__(self, key: str, value: typing.Any) -> None:
+        assert isinstance(key, str)
+
+        super().__setitem__(key, value)
+
+        if not isinstance(value, IPacket):
+            return
+
+        assert value.name is None, "When defining structs this way, names are to be provided as actual dict names"
+
+        if key != "_":
+            value = key / value
+
+        self.fields.append(value)
+
+
 _StructDict: typing.TypeAlias = typing.Dict[str, typing.Any]
 
 
 class Struct(PacketAdapter[_StructDict, _SeqList]):
     wrapped: Sequence
 
+    @classmethod
+    def __prepare__(metacls, name, bases):
+        return _StructMetaLocals()
+
     @typing.overload
     def __init__(self, name: str,
                  bases: typing.Tuple[typing.Type | "Struct"],
-                 fields: _StructDict):
+                 fields: _StructMetaLocals):
         """
         The metaclass-compatible constructor
         """
@@ -165,13 +191,13 @@ class Struct(PacketAdapter[_StructDict, _SeqList]):
         if len(args) == 3 and isinstance(args[1], tuple):
             name: str
             bases: typing.Tuple[typing.Type | "Struct"]
-            fields: _StructDict
+            fields: _StructMetaLocals
 
             name, bases, fields = args
 
             assert isinstance(name, str)
             assert isinstance(bases, tuple)
-            assert isinstance(fields, dict)
+            assert isinstance(fields, _StructMetaLocals)
 
             if any(map(lambda b: isinstance(b, IPacket), bases)):
                 raise NotImplementedError("Struct inheritance not yet implemented")
@@ -181,14 +207,7 @@ class Struct(PacketAdapter[_StructDict, _SeqList]):
 
             self._name = name
 
-            kwargs = {}
-            for name, field in fields.items():
-                if not isinstance(field, IPacket):
-                    continue
-                kwargs[name] = field
-
-            self.__init__(**kwargs)
-            return
+            args = fields.fields
 
         super().__init__(Sequence(*args))
 

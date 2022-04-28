@@ -152,12 +152,12 @@ class AutoPacket(PacketAdapter[T, T | None]):
 
             raise PacketEncodeError("Explicitly specified value for automatic field is invalid.")
 
-        if not self._override_enc and obj is not None:
+        if self._override_enc and obj is not None:
             value = obj
 
         ctx.register_val(value)
 
-        return value if self._validate_enc else obj
+        return value
 
     def _modify_dec(self, obj: T, ctx: Context) -> T:
         if self._validate_dec:

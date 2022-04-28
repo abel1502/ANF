@@ -229,6 +229,8 @@ class IPacket(abc.ABC, typing.Generic[T]):
 
 
 class PacketWrapper(IPacket[T]):
+    wrapped: IPacket[T]
+
     def __init__(self, wrapped: IPacket[T]):
         self.wrapped: IPacket = wrapped
 
@@ -317,8 +319,10 @@ class PacketAdapter(PacketWrapper[T], typing.Generic[T, U]):
         pass
 
 
-class Renamed(PacketWrapper):
-    def __init__(self, wrapped: IPacket):
+class Renamed(PacketWrapper[T]):
+    wrapped: IPacket[T]
+
+    def __init__(self, wrapped: IPacket[T]):
         super().__init__(wrapped)
 
         self._name: str | None = None
