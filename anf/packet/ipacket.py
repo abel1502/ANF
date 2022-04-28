@@ -192,10 +192,8 @@ class IPacket(abc.ABC, typing.Generic[T]):
             return NotImplemented
         return self.renamed(other)
 
-    def __getitem__(self, cnt: int) -> "Array[T]":
+    def __getitem__(self, cnt: CtxParam[int]) -> "Array[T]":
         from .repeaters import Array
-
-        assert isinstance(cnt, int)
 
         return Array[T](self, cnt)
 

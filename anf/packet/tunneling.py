@@ -9,6 +9,7 @@ from .context import *
 from .ipacket import *
 from .struct import *
 from .misc import *
+from .repeaters import Array
 
 
 class Transformed(PacketWrapper[T]):
@@ -69,12 +70,17 @@ class Transformed(PacketWrapper[T]):
 ST = typing.TypeVar("ST", bound=typing.Sized)
 
 
-class CountPrefixed(StructAdapter[ST]):
+class CountPrefixed(StructAdapter[ST], typing.Generic[ST]):
     def __init__(self, count_field: IPacket[int], data_field: typing.Callable[[CtxParam[int]], IPacket[ST]]):
         super().__init__(Struct(
             "count" / Deduced(count_field, lambda ctx: len(ctx.parent.data.value)),
             "data" / data_field(lambda ctx: ctx.parent.count.value)
         ))
+
+
+class CountPrefixedArray(CountPrefixed[typing.List[T]], typing.Generic[T]):
+    def __init__(self, count_field: IPacket[int], data_item_field: IPacket[T]):
+        super().__init__(count_field, lambda cnt: data_item_field[cnt])
 
 
 class SizePrefixed(StructAdapter[T]):
@@ -146,6 +152,7 @@ class Checksum(PacketWrapper[T | None]):
 __all__ = (
     "Transformed",
     "CountPrefixed",
+    "CountPrefixedArray",
     "SizePrefixed",
     "Checksum",
 )

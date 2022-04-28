@@ -112,6 +112,7 @@ async def main():
         (checksum_weird, checksum_weird_val),
         (Array[int](UInt16, 5), [6, 8, 10, 12, 77]),
         (CString()[3], ["Hello", "Dear", "World"]),
+        (CountPrefixedArray(VarInt, PaddedString(8)), ["I'm", "here", "again"]),
         (my_struct, my_struct_val, False),
     )
 
